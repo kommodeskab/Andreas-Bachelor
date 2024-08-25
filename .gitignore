@@ -1,6 +1,7 @@
 /outputs
 /logs
 /data
+/multirun
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

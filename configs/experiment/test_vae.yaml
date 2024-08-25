@@ -2,8 +2,11 @@
 defaults:
   - override /trainer: cpu
   - override /data: mnist
-  - override /model: simplevae
   - override /callbacks: vaecallbacks
+  - override /model: simplevae
+
+trainer:
+  max_epochs: 10
 
 project_name: 'first_project'
 task_name: 'first_task'

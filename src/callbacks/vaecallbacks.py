@@ -1,4 +1,4 @@
-from pytorch_lightning.callbacks import Callback
+from pytorch_lightning import Callback
 from torch.utils.data import DataLoader
 import matplotlib.pyplot as plt
 import torch
@@ -8,7 +8,7 @@ class VAECallback(Callback):
         super().__init__()
         self.num_samples = num_samples
     
-    def on_epoch_end(self, trainer, pl_module):
+    def on_train_epoch_end(self, trainer, pl_module):
         pl_module.eval()
         num_samples = self.num_samples
         dataloader = DataLoader(trainer.datamodule.val_dataset, batch_size = num_samples)

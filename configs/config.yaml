@@ -7,5 +7,5 @@ defaults:
   - trainer: ???
   - data: ???
   - model: ???
-  - callbacks: None
+  - callbacks: ???
   - _self_
