@@ -1,0 +1,9 @@
+defaults:
+  - learningratemonitor
+  - modelcheckpoint
+  - richprogressbar
+  - vaereconstructions
+
+modelcheckpoint:
+  monitor: 'loss/val'
+  save_top_k: 1

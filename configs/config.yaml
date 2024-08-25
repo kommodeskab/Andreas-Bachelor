@@ -1,0 +1,11 @@
+# @package _global_
+project_name: ???
+task_name: ???
+experiment_id: False
+
+defaults:
+  - trainer: ???
+  - data: ???
+  - model: ???
+  - callbacks: None
+  - _self_

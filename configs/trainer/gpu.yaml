@@ -1,0 +1,2 @@
+max_epochs: 2
+accelerator: gpu
