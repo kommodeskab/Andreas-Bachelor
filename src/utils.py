@@ -6,6 +6,8 @@ def get_project_name_from_id(experiment_id : str) -> str:
     for dirpath, dirnames, _ in os.walk("logs"):
         if experiment_id in dirnames:
             return os.path.basename(dirpath)
+        
+    raise ValueError(f"Experiment {experiment_id} not found")
 
 def get_ckpt_path(experiment_id):
     if experiment_id is False:

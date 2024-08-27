@@ -8,12 +8,13 @@ from src.utils import get_ckpt_path, instantiate_callbacks
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def my_app(cfg : DictConfig) -> None:
-    print(f"Config:\n\n{OmegaConf.to_yaml(cfg, resolve=True)}")
+    cfg_yaml = OmegaConf.to_yaml(cfg, resolve=True)
+    print(f"Config:\n\n{cfg_yaml}")
     
     project_name, task_name, experiment_id = cfg.project_name, cfg.task_name, cfg.experiment_id
     
     task : Task = Task.init(project_name = project_name, task_name = task_name, continue_last_task=experiment_id)
-    task.upload_artifact("cfg", cfg)
+    task.upload_artifact("cfg_yaml", cfg_yaml)
     
     datamodule = hydra.utils.instantiate(cfg.data)
     model = hydra.utils.instantiate(cfg.model)

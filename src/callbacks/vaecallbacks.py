@@ -16,8 +16,8 @@ class VAECallback(Callback):
         samples = samples.to(pl_module.device)
         
         with torch.no_grad():
-            z = pl_module.encoder(samples)
-            reconstructions = pl_module.decoder(z)
+            mu, _ = pl_module.encoder(samples)
+            reconstructions = pl_module.decoder(mu)
         
         fig, axs = plt.subplots(num_samples, 2, figsize = (10, 20))
         

@@ -1,6 +1,6 @@
 from src.data_modules.basedatamodule import BaseDataModule
 from torchvision.datasets import MNIST
-from torchvision.transforms import ToTensor
+from torchvision.transforms import ToTensor, Resize, Compose
 
 class MNISTDataModule(BaseDataModule):
     def __init__(
@@ -11,16 +11,21 @@ class MNISTDataModule(BaseDataModule):
         super().__init__(batch_size, num_workers)
         self.save_hyperparameters()
         
+        transform = Compose([
+            ToTensor(),
+            Resize((32, 32)),
+        ])
+        
         self.train_dataset = MNIST(
             root = "data",
             train = True,
             download = True,
-            transform = ToTensor(),
+            transform = transform,
         )
         
         self.val_dataset = MNIST(
             root = "data",
             train = False,
             download = True,
-            transform = ToTensor(),
+            transform = transform,
         )
