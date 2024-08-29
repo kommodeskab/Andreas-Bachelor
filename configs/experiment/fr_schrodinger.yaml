@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - override /trainer: gpu_fast
+  - override /data: fun2d
+  - override /callbacks: changedataloader
+  - override /model: simpleschrodinger
+
+project_name: 'Bachelor'
+task_name: 'schrodinger_2d'

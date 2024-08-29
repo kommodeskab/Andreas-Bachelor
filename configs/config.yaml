@@ -2,12 +2,10 @@
 project_name: ???
 task_name: ???
 experiment_id: False
+seed: 42
 
 defaults:
   - trainer: ???
   - data: ???
   - model: ???
   - callbacks: ???
-  - _self_
-
-seed: 42

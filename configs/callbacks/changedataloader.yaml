@@ -1,0 +1,2 @@
+_target_: src.callbacks.OT_callbacks.SchrodingerChangeDataloaderCB
+patience: 100
