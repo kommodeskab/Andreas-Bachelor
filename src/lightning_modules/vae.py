@@ -18,16 +18,27 @@ class SimpleVAE(BaseLightningModule):
     def common_step(self, batch):
         x, _ = batch
         mu, log_var = self.encoder(x)
-        kl_divergence = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
-        z = mu + torch.randn_like(mu) * torch.exp(0.5 * log_var)
+        z = self._sample_z(mu, log_var)
         x_hat = self.decoder(z)
-        reconstruction_loss = self.mse(x_hat, x)
-        loss = reconstruction_loss + self.beta * kl_divergence
+    
+        loss, kl_divergence, reconstruction_loss = self._calculate_loss(x, x_hat, mu, log_var)
+
         return {
             "kl_divergence": kl_divergence,
             "reconstruction_loss": reconstruction_loss,
             "loss": loss,
         }
+
+    def _sample_z(self, mu, logvar):
+        std = torch.exp(0.5 * logvar)
+        eps = torch.randn_like(std)
+        return mu + eps * std
+    
+    def _calculate_loss(self, x, x_hat, mu, log_var):
+        reconstruction_loss = self.mse(x_hat, x)
+        kl_divergence = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
+        loss = reconstruction_loss + self.beta * kl_divergence
+        return loss, kl_divergence, reconstruction_loss
     
     def training_step(self, batch, batch_idx):
         losses = self.common_step(batch)

@@ -12,15 +12,16 @@ class SimpleFFN(BaseTorchModule):
         self,
         in_features : int,
         out_features : int,   
+        hidden_layer_size : int = 128
         ):
         super().__init__()
         self.in_features = in_features
         self.out_features = out_features
         
-        self.fc1 = nn.Linear(in_features, 128)
-        self.fc2 = nn.Linear(128, out_features)
+        self.fc1 = nn.Linear(in_features, hidden_layer_size)
+        self.fc2 = nn.Linear(hidden_layer_size, out_features)
         self.activation = nn.ReLU()
-        
+
     def forward(self, x):
         x = self.fc1(x)
         x = self.activation(x)
@@ -34,14 +35,22 @@ class SimpleEncoderForImages(SimpleFFN):
         width : int, 
         channels : int,
         out_features : int,
+        hidden_layer_size : int = 128
         ):
         in_features = height * width * channels
-        super().__init__(in_features, out_features)
+        super().__init__(in_features, out_features, hidden_layer_size)
+
+        self.mu_lin = nn.Linear(out_features, out_features)
+        self.logvar_lin = nn.Linear(out_features, out_features)
         
     def forward(self, x):
         size = x.shape
         x = x.view(size[0], -1)
-        return super().forward(x)
+        x = super().forward(x)
+        x = nn.functional.relu(x)
+        mu = self.mu_lin(x)
+        logvar = self.logvar_lin(x)
+        return mu, logvar
         
 class SimpleDecoderForImages(SimpleFFN):
     def __init__(
@@ -50,9 +59,10 @@ class SimpleDecoderForImages(SimpleFFN):
         height : int,
         width : int, 
         channels : int,
+        hidden_layer_size : int = 128
         ):
         out_features = height * width * channels
-        super().__init__(in_features, out_features)
+        super().__init__(in_features, out_features, hidden_layer_size)
         
         self.height = height
         self.width = width
@@ -81,10 +91,10 @@ class ImageEncoder(BaseTorchModule):
             
         final_height = height // 2 ** len(channels_list)
         final_width = width // 2 ** len(channels_list)
-        final_size = (channels_list[-1], final_height, final_width)
+        final_size = channels_list[-1] * final_height * final_width
         
-        self.mu_lin = nn.Linear(prod_of_tuple(final_size), latent_dim)
-        self.logvar_lin = nn.Linear(prod_of_tuple(final_size), latent_dim)
+        self.mu_lin = nn.Linear(final_size, latent_dim)
+        self.logvar_lin = nn.Linear(final_size, latent_dim)
         
     def forward(self, x : torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         for block in self.blocks:

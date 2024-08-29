@@ -5,9 +5,14 @@ from pytorch_lightning.loggers import TensorBoardLogger
 from clearml import Task
 from omegaconf import OmegaConf
 from src.utils import get_ckpt_path, instantiate_callbacks
+import torch
+import pytorch_lightning as pl
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def my_app(cfg : DictConfig) -> None:
+    torch.set_float32_matmul_precision("high")
+    pl.seed_everything(cfg.seed)
+
     cfg_yaml = OmegaConf.to_yaml(cfg, resolve=True)
     print(f"Config:\n\n{cfg_yaml}")
     

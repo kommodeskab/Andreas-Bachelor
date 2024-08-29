@@ -18,10 +18,10 @@ class BaseBlock(nn.Module):
     def forward(self, x):
         x = self.conv1(x)
         x = self.relu(x)
-        x = self.pool(x)
         x = self.conv2(x)
         x = self.relu(x)
         x = self.dropout(x)
+        x = self.pool(x)
         
         return x
 
@@ -43,7 +43,7 @@ class UpBlock(BaseBlock):
         dropout: float = 0.2,
         ):
         super().__init__(in_channels, out_channels, dropout)
-        self.pool = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+        self.pool = nn.Upsample(scale_factor=2, mode='nearest')
 
 if __name__ == "__main__":
     x = torch.randn(1, 3, 32, 32)

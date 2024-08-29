@@ -1,0 +1,19 @@
+_target_: src.lightning_modules.vae.SimpleVAE
+
+encoder:
+  _target_: src.networks.encoders_decoders.ImageEncoder
+  height: 32
+  width: 32
+  channels: 1
+  latent_dim: 64
+  channels_list: [32, 64, 256]
+
+decoder:
+  _target_: src.networks.encoders_decoders.ImageDecoder
+  height: 32
+  width: 32
+  channels: 1
+  latent_dim: 64
+  channels_list: [32, 64, 256]
+
+beta: 1.0
