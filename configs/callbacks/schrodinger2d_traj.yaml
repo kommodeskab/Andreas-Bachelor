@@ -1,3 +1,4 @@
-_target_: src.callbacks.OT_callbacks.SchrodingerPlot2dCB
-num_samples: 100
-plot_trajectory: True
+schrodinger2d_traj:
+  _target_: src.callbacks.OT_callbacks.SchrodingerPlot2dCB
+  num_samples: 1000
+  plot_trajectory: True

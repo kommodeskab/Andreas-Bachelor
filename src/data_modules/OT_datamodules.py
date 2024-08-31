@@ -12,25 +12,26 @@ class StandardSchrodingerDM(pl.LightningDataModule):
         end_dataset : Dataset,
         train_val_split : float = 0.9,
         training_backward : bool = True,
-        batch_size : int = 10
+        batch_size : int = 10,
+        num_workers: int = 4,
         ):
         
         super().__init__()
-        self.save_hyperparameters(ignore=["dataset1", "dataset2"])
+        self.save_hyperparameters(ignore=["start_dataset", "end_dataset"])
                 
         self.start_dataset_train, self.start_dataset_val = random_split(start_dataset, [train_val_split, 1 - train_val_split])
         self.end_dataset_train, self.end_dataset_val = random_split(end_dataset, [train_val_split, 1 - train_val_split])
     
     def train_dataloader(self):
         if self.hparams.training_backward:
-            return DataLoader(self.start_dataset_train, batch_size = self.hparams.batch_size, shuffle = True, num_workers = 4, persistent_workers=True)
+            return DataLoader(self.start_dataset_train, batch_size = self.hparams.batch_size, shuffle = True, num_workers = self.hparams.num_workers, persistent_workers=True)
         else:
-            return DataLoader(self.end_dataset_train, batch_size = self.hparams.batch_size, shuffle = True, num_workers = 4, persistent_workers=True)
+            return DataLoader(self.end_dataset_train, batch_size = self.hparams.batch_size, shuffle = True, num_workers = self.hparams.num_workers, persistent_workers=True)
         
     def val_dataloader(self):
         return {
-            'd1' : DataLoader(self.start_dataset_val, batch_size = self.hparams.batch_size, num_workers = 4, persistent_workers=True),
-            'd2' : DataLoader(self.end_dataset_val, batch_size = self.hparams.batch_size, num_workers = 4, persistent_workers=True)
+            'd1' : DataLoader(self.start_dataset_val, batch_size = self.hparams.batch_size, num_workers = self.hparams.num_workers, persistent_workers=True),
+            'd2' : DataLoader(self.end_dataset_val, batch_size = self.hparams.batch_size, num_workers = self.hparams.num_workers, persistent_workers=True)
         }
         
 class GaussianSchrodingerDM(StandardSchrodingerDM):

@@ -13,6 +13,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
         min_gamma : float = None,
         num_steps : int = None,
         training_backward : bool = True,
+        patience: int = 100,
         lr : float = 1e-3,
     ):
         super().__init__()
@@ -41,7 +42,22 @@ class StandardSchrodingerBridge(BaseLightningModule):
         
         self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()        
         self.losses : list = []
+
+    def _has_converged(self) -> bool:
+        losses, patience = self.losses, self.hparams.patience
+
+        if len(losses) < patience + 1:
+            return False
         
+        min_loss = min(losses[:-patience])
+        return all([l > min_loss for l in losses[-patience:]])
+        
+    def on_train_batch_start(self, batch: Any, batch_idx: int) -> int | None:
+        if self._has_converged():
+            self.hparams.training_backward = not self.hparams.training_backward
+            self.losses = []
+            return -1
+
     def _check_gammas(self, min_gamma, max_gamma, num_steps):
         assert sum([val is None for val in [num_steps, min_gamma, max_gamma]]) < 2, "There must be less than 2 None values"
         
@@ -153,10 +169,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
                 trajectory[k] = xk
                 xk_plus_one = xk
             
-        if return_trajectory:
-            return trajectory
-                
-        return xk
+        return trajectory if return_trajectory else xk
     
     def training_step(self, batch : Tensor, batch_idx : int) -> None:
         backward_opt, forward_opt = self.optimizers()
@@ -198,11 +211,8 @@ class StandardSchrodingerBridge(BaseLightningModule):
         self.losses.append(avg_loss)      
         
         self.log_dict({
-            "training_backward" : self.hparams.training_backward,
             "Average backward loss" : avg_loss * self.hparams.training_backward,
             "Average forward loss" : avg_loss * (not self.hparams.training_backward),
-            **{f"backward_loss_step/{k}" : l * self.hparams.training_backward for k, l in enumerate(epoch_losses)},
-            **{f"forward_loss_step/{k}" : l * (not self.hparams.training_backward) for k, l in enumerate(epoch_losses)},
         }, prog_bar = True)
                                              
     def configure_optimizers(self):

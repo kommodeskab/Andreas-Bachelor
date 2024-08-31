@@ -12,5 +12,6 @@ backward_model:
   out_features: 2
   time_encoding_size: 64
 
-max_gamma: 0.001
-min_gamma: 0.0001
+patience: 50
+max_gamma: 0.01
+min_gamma: 0.01

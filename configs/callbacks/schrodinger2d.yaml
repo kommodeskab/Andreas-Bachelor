@@ -3,3 +3,4 @@ defaults:
   - richprogressbar
   - schrodinger2d_traj
   - changedataloader
+  - plotgammaschedule

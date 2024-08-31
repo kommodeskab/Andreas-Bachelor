@@ -2,7 +2,7 @@
 defaults:
   - override /trainer: gpu_fast
   - override /data: fun2d
-  - override /callbacks: changedataloader
+  - override /callbacks: schrodinger2d
   - override /model: simpleschrodinger
 
 project_name: 'Bachelor'
