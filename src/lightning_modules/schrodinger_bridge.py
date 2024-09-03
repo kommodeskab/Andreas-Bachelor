@@ -12,6 +12,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
         max_gamma : float = None,
         min_gamma : float = None,
         num_steps : int = None,
+        strict_gammas : bool = True,
         training_backward : bool = True,
         patience: int = 100,
         lr : float = 1e-3,
@@ -19,29 +20,23 @@ class StandardSchrodingerBridge(BaseLightningModule):
         super().__init__()
         self.save_hyperparameters(ignore = ["forward_model", "backward_model"])
         self.automatic_optimization : bool = False
-        
-        min_gamma, max_gamma, num_steps = self._check_gammas(min_gamma, max_gamma, num_steps)
-        self.hparams.update({
-            "min_gamma" : min_gamma,
-            "max_gamma" : max_gamma,
-            "num_steps" : num_steps,
-        })
-        
-        calculate_gammas = lambda x : - abs((max_gamma - min_gamma) * (2 * x - num_steps) / num_steps) + max_gamma
-        self.gammas = calculate_gammas(torch.arange(num_steps))
-        assert (torch.sum(self.gammas) - 1).abs() < 1e-3, "Gammas must sum to 1"
 
-        self.gammas = torch.cat([
-            torch.tensor([0]),
-            torch.linspace(min_gamma, max_gamma, num_steps // 2), 
-            torch.linspace(max_gamma, min_gamma, num_steps // 2)
-            ])
+        assert max_gamma >= min_gamma, f"{max_gamma = } must be greater than {min_gamma = }"
+        gammas = torch.linspace(min_gamma, 2 * max_gamma - min_gamma, num_steps)
+        gammas[-(num_steps // 2) :] = reversed(gammas[: num_steps // 2])
+        gammas = torch.cat([torch.tensor([0]), gammas]) # the first gamma is 0. This gamma is never used, since indexing starts at 1
+        self.gammas = gammas
+        
+        if strict_gammas:
+            gammas_sum = gammas.sum()
+            assert abs(1 - gammas_sum) < 1e-3, f"The sum of gammas must be equal to 1, but got {gammas_sum = }"
         
         self.forward_model : Callable[[Tensor, Tensor], Tensor] = forward_model
         self.backward_model : Callable[[Tensor, Tensor], Tensor] = backward_model
         
         self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()        
         self.losses : list = []
+        self.DSB_iteration : int = 0
 
     def _has_converged(self) -> bool:
         losses, patience = self.losses, self.hparams.patience
@@ -54,28 +49,10 @@ class StandardSchrodingerBridge(BaseLightningModule):
         
     def on_train_batch_start(self, batch: Any, batch_idx: int) -> int | None:
         if self._has_converged():
+            self.DSB_iteration += 1
             self.hparams.training_backward = not self.hparams.training_backward
             self.losses = []
             return -1
-
-    def _check_gammas(self, min_gamma, max_gamma, num_steps):
-        assert sum([val is None for val in [num_steps, min_gamma, max_gamma]]) < 2, "There must be less than 2 None values"
-        
-        # min_gamma + max_gamma  = 2 / num_steps
-        
-        if num_steps is None:
-            num_steps = 2 / (min_gamma + max_gamma)
-        elif min_gamma is None:
-            min_gamma = 2 / num_steps - max_gamma
-        elif max_gamma is None:
-            max_gamma = 2 / num_steps - min_gamma
-        
-        num_steps = int(num_steps)
-        
-        assert max_gamma >= min_gamma, "max_gamma must be greater than min_gamma"
-        assert min_gamma > 0, "min_gamma must be greater than 0"
-        
-        return min_gamma, max_gamma, num_steps
         
     def k_to_tensor(self, k : int, size : Tuple[int]) -> Tensor:
         return torch.full((size, 1), k, dtype = torch.float32, device = self.device)
@@ -171,49 +148,74 @@ class StandardSchrodingerBridge(BaseLightningModule):
             
         return trajectory if return_trajectory else xk
     
-    def training_step(self, batch : Tensor, batch_idx : int) -> None:
-        backward_opt, forward_opt = self.optimizers()
-        epoch_losses = torch.zeros(self.hparams.num_steps)
-
-        if self.hparams.training_backward:
-            x0 = batch
-            xk = x0.clone()
-            range_ = range(self.hparams.num_steps) # 0, 1, 2, ..., num_steps - 1
-        else:
-            xN = batch
-            xk_plus_one = xN.clone()
-            range_ = reversed(range(self.hparams.num_steps))  # num_steps - 1, num_steps - 2, ..., 1, 0
+    def _train_backward(self, x0 : Tensor, validating : bool = False) -> dict[str, float]:
+        """
+        Given the start point x0, train the backward model
         
-        for i, k in enumerate(range_):
-            if self.hparams.training_backward:
-                # training the backward_model                
-                loss, xk_plus_one = self._backward_loss(xk, k, x0)
-                
+        Args:
+            x0 (Tensor) : the start point
+            
+        Returns:
+            losses (dict) : the average backward and forward losses
+        """
+        backward_opt, _ = self.optimizers()
+        losses = torch.zeros(self.hparams.num_steps)
+        xk = x0.clone()
+        
+        for i, k in enumerate(range(self.hparams.num_steps)):
+            loss, xk_plus_one = self._backward_loss(xk, k, x0)
+            
+            if not validating:
                 backward_opt.zero_grad()
                 self.manual_backward(loss)
                 backward_opt.step()
                 
-                xk = xk_plus_one
+            xk = xk_plus_one
+            losses[i] = loss.item()
             
-            else:
-                # training the forward_model
-                loss, xk = self._forward_loss(xk_plus_one, k + 1, xN)
-                
+        avg_loss = losses.mean().item()
+        self.losses.append(avg_loss)
+        
+        return avg_loss
+    
+    def _train_forward(self, xN : Tensor, validating : bool = False) -> dict[str, float]:
+        _, forward_opt = self.optimizers()
+        losses = torch.zeros(self.hparams.num_steps)
+        xk_plus_one = xN.clone()
+        
+        for i, k in enumerate(reversed(range(self.hparams.num_steps))):
+            loss, xk = self._forward_loss(xk_plus_one, k + 1, xN)
+            if not validating:
                 forward_opt.zero_grad()
                 self.manual_backward(loss)
                 forward_opt.step()
                 
-                xk_plus_one = xk
-                
-            epoch_losses[i] = loss.item()
+            xk_plus_one = xk
+            losses[i] = loss.item()
             
-        avg_loss = epoch_losses.mean().item()
-        self.losses.append(avg_loss)      
+        avg_loss = losses.mean().item()
+        self.losses.append(avg_loss)
         
-        self.log_dict({
-            "Average backward loss" : avg_loss * self.hparams.training_backward,
-            "Average forward loss" : avg_loss * (not self.hparams.training_backward),
-        }, prog_bar = True)
+        return avg_loss
+    
+    def training_step(self, batch : Tensor, batch_idx : int) -> None:
+        if self.hparams.training_backward:
+            avg_backward_loss = self._train_backward(batch)
+            self.log("backward_loss/train", avg_backward_loss, prog_bar = True)
+        else:
+            avg_forward_loss = self._train_forward(batch)
+            self.log("forward_loss/train", avg_forward_loss, prog_bar = True)
+            
+        self.log("DSB_iteration", self.DSB_iteration, prog_bar = True)
+    
+    @torch.no_grad()
+    def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> None:
+        if dataloader_idx == 0: # returns the "start" dataset, i.e. we are testing the backward model
+            avg_backward_loss = self._train_backward(batch, validating = True)
+            self.log("backward_loss/val", avg_backward_loss, prog_bar = True)
+        else:
+            avg_forward_loss = self._train_forward(batch, validating = True)
+            self.log("forward_loss/val", avg_forward_loss, prog_bar = True)
                                              
     def configure_optimizers(self):
         backward_opt = torch.optim.Adam(self.backward_model.parameters(), lr = self.hparams.lr)

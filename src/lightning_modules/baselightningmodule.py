@@ -6,9 +6,10 @@ class BaseLightningModule(pl.LightningModule):
         
     def _convert_dict_losses(self, losses, suffix = "", prefix = ""):
         if suffix:
-            return {f"{k}/{suffix}": v for k, v in losses.items()}
-        elif prefix:
-            return {f"{prefix}/{k}": v for k, v in losses.items()}
+            losses = {f"{k}/{suffix}": v for k, v in losses.items()}
+        if prefix:
+            losses = {f"{prefix}/{k}": v for k, v in losses.items()}
+        return losses
     
     def on_train_start(self) -> None:
         hparams = self._convert_dict_losses(self.hparams, prefix="hparams")

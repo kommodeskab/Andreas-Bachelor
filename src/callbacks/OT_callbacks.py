@@ -27,24 +27,45 @@ class PlotGammaScheduleCB(pl.Callback):
         super().__init__()
     
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
-        gammas = pl_module.gammas
-        ts = torch.linspace(0, 1, len(gammas))
-        fig, ax = plt.subplots(figsize=(10, 5))
-        ax.plot(ts, gammas)
-        ax.set_xlabel("t")
-        ax.set_ylabel("gamma")
-        ax.set_title("Gamma schedule")
+        def make_gamma_plot(gammas, ylabel, title):
+            ts = range(1, len(gammas)+1)
+            fig, ax = plt.subplots(figsize=(10, 5))
+            ax.plot(ts, gammas)
+            ax.set_xlabel("k")
+            ax.set_ylabel(ylabel)
+            ax.set_title(title)
+            return fig
+        
+        gammas = pl_module.gammas[1:] # first gamma is 0, and is never used (since indexing starts at 1)
+        fig = make_gamma_plot(gammas, "Gamma", "Gamma schedule")
         trainer.logger.experiment.add_figure("gammaschedule/Gamma schedule", fig, global_step=trainer.global_step)
+        plt.close(fig)
+        
+        if hasattr(pl_module, "gammas_bar"):
+            gammas_bar = pl_module.gammas_bar[1:]
+            fig = make_gamma_plot(gammas_bar, "Gamma bar", "Gamma bar schedule")
+            trainer.logger.experiment.add_figure("gammaschedule/Gamma bar schedule", fig, global_step=trainer.global_step)
+            plt.close(fig)
+            
+        if hasattr(pl_module, "sigma_backward"):
+            sigma_backward = pl_module.sigma_backward[1:]
+            fig = make_gamma_plot(sigma_backward, "Sigma backward", "Sigma backward schedule")
+            trainer.logger.experiment.add_figure("gammaschedule/Sigma backward schedule", fig, global_step=trainer.global_step)
+            plt.close(fig)
+            
+        if hasattr(pl_module, "sigma_forward"):
+            sigma_forward = pl_module.sigma_forward[1:]
+            fig = make_gamma_plot(sigma_forward, "Sigma forward", "Sigma forward schedule")
+            trainer.logger.experiment.add_figure("gammaschedule/Sigma forward schedule", fig, global_step=trainer.global_step)
+            plt.close(fig)
         
 class SchrodingerPlot2dCB(pl.Callback):
     def __init__(
         self, 
         num_samples : int = 10,
-        plot_trajectory : bool = False,
         ):
         super().__init__()
         self.num_samples = num_samples
-        self.plot_trajectory = plot_trajectory
         
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
         device = pl_module.device
@@ -56,36 +77,36 @@ class SchrodingerPlot2dCB(pl.Callback):
         x0 = get_batch_from_dataset(start_dataset, self.num_samples).to(device)
         xT = get_batch_from_dataset(end_dataset, self.num_samples).to(device)
 
-        if self.plot_trajectory:
-            fig, ax = plt.subplots(2, 5, figsize=(20, 10))
-            # first go forward
-            trajectory = pl_module.sample(x0, forward = True, return_trajectory=True)
-            traj_len = trajectory.shape[0]
-            # only keep 5 trajectories, the start, the end and 3 in between
-            traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
-            trajectory = trajectory[traj_idx, :, :]
-            min_x, max_x = trajectory[:, :, 0].min(), trajectory[:, :, 0].max()
-            min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
+        fig, ax = plt.subplots(2, 5, figsize=(20, 10))
+        # first go forward
+        trajectory = pl_module.sample(x0, forward = True, return_trajectory=True)
+        traj_len = trajectory.shape[0]
+        # only keep 5 trajectories, the start, the end and 3 in between
+        traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
+        trajectory = trajectory[traj_idx, :, :]
+        min_x, max_x = trajectory[:, :, 0].min(), trajectory[:, :, 0].max()
+        min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
 
-            for i in range(5):
-                x, y = trajectory[i, :, 0].cpu().numpy(), trajectory[i, :, 1].cpu().numpy()
-                ax[0, i].scatter(x, y, s = 1)
-                ax[0, i].set_aspect('equal')
-                ax[0, i].set_title(f"Step {traj_idx[i]}")
-                ax[0, i].set_xlim(min_x, max_x)
-                ax[0, i].set_ylim(min_y, max_y)
+        for i in range(5):
+            x, y = trajectory[i, :, 0].cpu().numpy(), trajectory[i, :, 1].cpu().numpy()
+            ax[0, i].scatter(x, y, s = 1)
+            ax[0, i].set_aspect('equal')
+            ax[0, i].set_title(f"Step {traj_idx[i]}")
+            ax[0, i].set_xlim(min_x, max_x)
+            ax[0, i].set_ylim(min_y, max_y)
 
-            # then go backward
-            trajectory = pl_module.sample(xT, forward = False, return_trajectory=True)
-            trajectory = trajectory[traj_idx, :, :]
-            min_x, max_x = trajectory[:, :, 0].min(), trajectory[:, :, 0].max()
-            min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
+        # then go backward
+        trajectory = pl_module.sample(xT, forward = False, return_trajectory=True)
+        trajectory = trajectory[traj_idx, :, :]
+        min_x, max_x = trajectory[:, :, 0].min(), trajectory[:, :, 0].max()
+        min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
 
-            for i in range(5):
-                x, y = trajectory[i, :, 0].cpu().numpy(), trajectory[i, :, 1].cpu().numpy()
-                ax[1, i].scatter(x, y, s = 1)
-                ax[1, i].set_aspect('equal')
-                ax[1, i].set_xlim(min_x, max_x)
-                ax[1, i].set_ylim(min_y, max_y)
+        for i in range(5):
+            x, y = trajectory[i, :, 0].cpu().numpy(), trajectory[i, :, 1].cpu().numpy()
+            ax[1, i].scatter(x, y, s = 1)
+            ax[1, i].set_aspect('equal')
+            ax[1, i].set_xlim(min_x, max_x)
+            ax[1, i].set_ylim(min_y, max_y)
 
-            trainer.logger.experiment.add_figure("Forward and backward trajectory", fig, global_step=trainer.global_step)
+        trainer.logger.experiment.add_figure("Forward and backward trajectory", fig, global_step=trainer.global_step)
+        plt.close(fig)

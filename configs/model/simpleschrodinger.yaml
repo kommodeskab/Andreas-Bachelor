@@ -15,3 +15,4 @@ backward_model:
 patience: 50
 max_gamma: 0.01
 min_gamma: 0.01
+num_steps: 100

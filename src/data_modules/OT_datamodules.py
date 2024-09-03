@@ -29,10 +29,10 @@ class StandardSchrodingerDM(pl.LightningDataModule):
             return DataLoader(self.end_dataset_train, batch_size = self.hparams.batch_size, shuffle = True, num_workers = self.hparams.num_workers, persistent_workers=True)
         
     def val_dataloader(self):
-        return {
-            'd1' : DataLoader(self.start_dataset_val, batch_size = self.hparams.batch_size, num_workers = self.hparams.num_workers, persistent_workers=True),
-            'd2' : DataLoader(self.end_dataset_val, batch_size = self.hparams.batch_size, num_workers = self.hparams.num_workers, persistent_workers=True)
-        }
+        return [
+            DataLoader(self.start_dataset_val, batch_size = self.hparams.batch_size, num_workers = self.hparams.num_workers, persistent_workers=True),
+            DataLoader(self.end_dataset_val, batch_size = self.hparams.batch_size, num_workers = self.hparams.num_workers, persistent_workers=True)
+        ]
         
 class GaussianSchrodingerDM(StandardSchrodingerDM):
     def __init__(
