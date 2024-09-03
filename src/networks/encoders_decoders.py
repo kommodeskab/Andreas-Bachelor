@@ -12,20 +12,22 @@ class SimpleFFN(BaseTorchModule):
         self,
         in_features : int,
         out_features : int,   
-        hidden_layer_size : int = 128
+        hidden_layer_sizes : list[int] = [128]
         ):
         super().__init__()
-        self.in_features = in_features
-        self.out_features = out_features
         
-        self.fc1 = nn.Linear(in_features, hidden_layer_size)
-        self.fc2 = nn.Linear(hidden_layer_size, out_features)
-        self.activation = nn.ReLU()
-
+        self.hidden_layers = nn.ModuleList()
+        in_size = in_features
+        for out_size in hidden_layer_sizes:
+            self.hidden_layers.append(nn.Linear(in_size, out_size))
+            in_size = out_size
+            
+        self.out_layer = nn.Linear(in_size, out_features)
+        
     def forward(self, x):
-        x = self.fc1(x)
-        x = self.activation(x)
-        x = self.fc2(x)
+        for layer in self.hidden_layers:
+            x = nn.functional.relu(layer(x))
+        x = self.out_layer(x)
         return x
     
 class SimpleEncoderForImages(SimpleFFN):
