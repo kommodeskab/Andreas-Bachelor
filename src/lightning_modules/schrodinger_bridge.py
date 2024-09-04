@@ -169,7 +169,10 @@ class StandardSchrodingerBridge(BaseLightningModule):
         avg_loss = batch_losses.mean().item()
         self.losses.append(avg_loss)
         
-        return avg_loss
+        return {
+            "backward_loss": avg_loss,
+            "forward_loss": 0
+        }
     
     def _train_forward(self, xN : Tensor, validating : bool = False) -> dict[str, float]:
         """
@@ -200,27 +203,29 @@ class StandardSchrodingerBridge(BaseLightningModule):
         avg_loss = batch_losses.mean().item()
         self.losses.append(avg_loss)
         
-        return avg_loss
+        return {
+            "backward_loss": 0,
+            "forward_loss": avg_loss
+        }
     
     def training_step(self, batch : Tensor, batch_idx : int) -> None:
         if self.hparams.training_backward:
-            avg_backward_loss = self._train_backward(batch)
-            self.log("backward_loss/train", avg_backward_loss, prog_bar = True)
+            losses = self._train_backward(batch)
         else:
-            avg_forward_loss = self._train_forward(batch)
-            self.log("forward_loss/train", avg_forward_loss, prog_bar = True)
-            
+            losses = self._train_forward(batch)
+        
+        self.log_dict(self._convert_dict_losses(losses, "train"), prog_bar = True)
         self.log("DSB_iteration", self.DSB_iteration, prog_bar = True)
     
     @torch.no_grad()
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> None:
         if dataloader_idx == 0: # returns the "start" dataset, i.e. we are testing the backward model
-            avg_backward_loss = self._train_backward(batch, validating = True)
-            self.log("backward_loss/val", avg_backward_loss, prog_bar = True)
+            losses = self._train_backward(batch, validating = True)
         else:
-            avg_forward_loss = self._train_forward(batch, validating = True)
-            self.log("forward_loss/val", avg_forward_loss, prog_bar = True)
-                                             
+            losses = self._train_forward(batch, validating = True)
+        
+        self.log_dict(self._convert_dict_losses(losses, "val"), prog_bar = True)
+
     def configure_optimizers(self):
         backward_opt = torch.optim.Adam(self.backward_model.parameters(), lr = self.hparams.lr)
         forward_opt = torch.optim.Adam(self.forward_model.parameters(), lr = self.hparams.lr)

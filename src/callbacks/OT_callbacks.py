@@ -151,9 +151,8 @@ class GaussianTestCB(pl.Callback):
             mu_errors = [v["mu_error"] for v in pl_module.gaussian_test_results.values()]
             sigma_errors = [v["sigma_error"] for v in pl_module.gaussian_test_results.values()]
 
-            xs = range(1, len(mu_errors) + 1)
-            plt.plot(xs, mu_errors, label = "Mu error")
-            plt.plot(xs, sigma_errors, label = "Sigma error")
+            plt.plot(mu_errors, label = "Mu error")
+            plt.plot(sigma_errors, label = "Sigma error")
             plt.xlabel("DSB iteration")
             plt.ylabel("Error")
             plt.legend()
