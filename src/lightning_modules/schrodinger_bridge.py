@@ -159,7 +159,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
             losses (dict) : the average backward and forward losses
         """
         backward_opt, _ = self.optimizers()
-        losses = torch.zeros(self.hparams.num_steps)
+        batch_losses = torch.zeros(self.hparams.num_steps)
         xk = x0.clone()
         
         for i, k in enumerate(range(self.hparams.num_steps)):
@@ -171,29 +171,40 @@ class StandardSchrodingerBridge(BaseLightningModule):
                 backward_opt.step()
                 
             xk = xk_plus_one
-            losses[i] = loss.item()
+            batch_losses[i] = loss.item()
             
-        avg_loss = losses.mean().item()
+        avg_loss = batch_losses.mean().item()
         self.losses.append(avg_loss)
         
         return avg_loss
     
     def _train_forward(self, xN : Tensor, validating : bool = False) -> dict[str, float]:
+        """
+        Given the end point xN, train the forward model
+
+        Args:
+            xN (Tensor) : the end point
+
+        Returns:
+            losses (dict) : the average backward and forward losses
+
+        """
         _, forward_opt = self.optimizers()
-        losses = torch.zeros(self.hparams.num_steps)
+        batch_losses = torch.zeros(self.hparams.num_steps)
         xk_plus_one = xN.clone()
         
         for i, k in enumerate(reversed(range(self.hparams.num_steps))):
             loss, xk = self._forward_loss(xk_plus_one, k + 1, xN)
+            
             if not validating:
                 forward_opt.zero_grad()
                 self.manual_backward(loss)
                 forward_opt.step()
                 
             xk_plus_one = xk
-            losses[i] = loss.item()
+            batch_losses[i] = loss.item()
             
-        avg_loss = losses.mean().item()
+        avg_loss = batch_losses.mean().item()
         self.losses.append(avg_loss)
         
         return avg_loss
@@ -353,7 +364,3 @@ class FRSchrodingerBridge(BaseSimplifiedSchrodingerBridge):
         loss = self.mse(pred, target)
         
         return loss, xk
-    
-    
-if __name__ == "__main__":
-    min_gamma = 1e-3

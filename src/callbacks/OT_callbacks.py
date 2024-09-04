@@ -108,5 +108,45 @@ class SchrodingerPlot2dCB(pl.Callback):
             ax[1, i].set_xlim(min_x, max_x)
             ax[1, i].set_ylim(min_y, max_y)
 
+        fig.suptitle(f"Forward and backward trajectory (DSB-iteration: {pl_module.DSB_iteration})")
+
         trainer.logger.experiment.add_figure("Forward and backward trajectory", fig, global_step=trainer.global_step)
+        plt.close(fig)
+
+class GaussianTestCB(pl.Callback):
+    def __init__(
+            self,
+            num_samples : int = 1000,
+            ):
+        super().__init__()
+        self.num_samples = num_samples
+    
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
+        x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_train, self.num_samples).to(pl_module.device)
+        xT_pred = pl_module.sample(x0, forward = True)
+        xT_pred_mu, xT_pred_sigma = xT_pred.mean(dim = 0), xT_pred.std(dim = 0)
+        xT_real_mu, xT_pred_sigma = trainer.datamodule.end_mu, trainer.datamodule.end_sigma
+        mu_error = torch.norm(xT_pred_mu - xT_real_mu).item()
+        sigma_error = torch.norm(xT_pred_sigma - xT_pred_sigma).item()
+        
+        if hasattr(pl_module, "mu_errors"):
+            pl_module.mu_errors.append(mu_error)
+            pl_module.sigma_errors.append(sigma_error)
+        else:
+            pl_module.mu_errors = [mu_error]
+            pl_module.sigma_errors = [sigma_error]
+
+        mu_errors = pl_module.mu_errors
+        sigma_errors = pl_module.sigma_errors
+
+        xs = range(1, len(mu_errors) + 1)
+        plt.plot(xs, mu_errors, label = "Mu error")
+        plt.plot(xs, sigma_errors, label = "Sigma error")
+        plt.xlabel("Epoch")
+        plt.ylabel("Error")
+        plt.legend()
+        plt.title("Mu and sigma error")
+        fig = plt.gcf()
+
+        trainer.logger.experiment.add_figure("Mu and sigma error", fig, global_step=trainer.global_step)
         plt.close(fig)

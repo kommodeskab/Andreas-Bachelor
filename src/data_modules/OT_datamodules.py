@@ -40,14 +40,21 @@ class GaussianSchrodingerDM(StandardSchrodingerDM):
         batch_size : int = 10,
         size : int = 1000,
     ):
+        self.start_mu = torch.zeros(5)
+        self.start_sigma = torch.ones(5) * 0.1
+
         start_dataset = StandardNormalDataset(
-            mu = torch.tensor([0.0, 0.0]),
-            sigma = torch.tensor([0.1, 0.1]),
+            mu = self.start_mu,
+            sigma = self.start_sigma,
             size = size
         )
+
+        self.end_mu = torch.ones(5)
+        self.end_sigma = torch.ones(5) * 0.5
+
         end_dataset = StandardNormalDataset(
-            mu = torch.tensor([1.0, 1.0]),
-            sigma = torch.tensor([0.1, 0.1]),
+            mu = self.end_mu,
+            sigma = self.end_sigma,
             size = size
         )
         

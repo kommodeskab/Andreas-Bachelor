@@ -1,9 +1,0 @@
-# @package _global_
-defaults:
-  - override /trainer: cpu
-  - override /data: mnist
-  - override /callbacks: vaecallbacks
-  - override /model: simplevae
-
-project_name: 'first_project'
-task_name: 'first_task'
