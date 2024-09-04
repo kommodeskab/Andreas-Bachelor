@@ -1,9 +1,12 @@
-from typing import Any
+from typing import Any, Dict
 import pytorch_lightning as pl
 import torch
 import matplotlib.pyplot as plt
+import matplotlib
 from src.lightning_modules.schrodinger_bridge import StandardSchrodingerBridge
 from src.callbacks.utils import get_batch_from_dataset
+
+matplotlib.use('Agg')
 
 class SchrodingerChangeDataloaderCB(pl.Callback):
     def __init__(self):
@@ -14,12 +17,17 @@ class SchrodingerChangeDataloaderCB(pl.Callback):
         """
         super().__init__()
         
-    def on_train_start(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    def on_train_start(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
         assert hasattr(trainer.datamodule.hparams, "training_backward"), "DataModule must have attribute training_backward"
         assert hasattr(pl_module.hparams, "training_backward"), "Model must have attribute training_backward"
         assert trainer.datamodule.hparams.training_backward == pl_module.hparams.training_backward, "DataModule and model must have the same training_backward"
         
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
+        if pl_module.has_converged():
+            pl_module.DSB_iteration += 1
+            pl_module.hparams.training_backward = not pl_module.hparams.training_backward
+            self.losses = []
+        
         trainer.datamodule.hparams.training_backward = pl_module.hparams.training_backward
 
 class PlotGammaScheduleCB(pl.Callback):
@@ -121,32 +129,36 @@ class GaussianTestCB(pl.Callback):
         super().__init__()
         self.num_samples = num_samples
     
+    def on_train_start(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
+        pl_module.gaussian_test_results = {}
+
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
+        current_dsb_iteration = pl_module.DSB_iteration
+
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_train, self.num_samples).to(pl_module.device)
         xT_pred = pl_module.sample(x0, forward = True)
         xT_pred_mu, xT_pred_sigma = xT_pred.mean(dim = 0), xT_pred.std(dim = 0)
-        xT_real_mu, xT_pred_sigma = trainer.datamodule.end_mu, trainer.datamodule.end_sigma
+        xT_real_mu, xT_real_sigma = trainer.datamodule.end_mu.to(pl_module.device), trainer.datamodule.end_sigma.to(pl_module.device)
         mu_error = torch.norm(xT_pred_mu - xT_real_mu).item()
-        sigma_error = torch.norm(xT_pred_sigma - xT_pred_sigma).item()
+        sigma_error = torch.norm(xT_pred_sigma - xT_real_sigma).item()
         
-        if hasattr(pl_module, "mu_errors"):
-            pl_module.mu_errors.append(mu_error)
-            pl_module.sigma_errors.append(sigma_error)
-        else:
-            pl_module.mu_errors = [mu_error]
-            pl_module.sigma_errors = [sigma_error]
+        pl_module.gaussian_test_results[current_dsb_iteration] = {
+            "mu_error": mu_error,
+            "sigma_error": sigma_error
+        }
 
-        mu_errors = pl_module.mu_errors
-        sigma_errors = pl_module.sigma_errors
+        if current_dsb_iteration > 1:
+            mu_errors = [v["mu_error"] for v in pl_module.gaussian_test_results.values()]
+            sigma_errors = [v["sigma_error"] for v in pl_module.gaussian_test_results.values()]
 
-        xs = range(1, len(mu_errors) + 1)
-        plt.plot(xs, mu_errors, label = "Mu error")
-        plt.plot(xs, sigma_errors, label = "Sigma error")
-        plt.xlabel("Epoch")
-        plt.ylabel("Error")
-        plt.legend()
-        plt.title("Mu and sigma error")
-        fig = plt.gcf()
+            xs = range(1, len(mu_errors) + 1)
+            plt.plot(xs, mu_errors, label = "Mu error")
+            plt.plot(xs, sigma_errors, label = "Sigma error")
+            plt.xlabel("DSB iteration")
+            plt.ylabel("Error")
+            plt.legend()
+            plt.title("Mu and sigma error")
+            fig = plt.gcf()
 
-        trainer.logger.experiment.add_figure("Mu and sigma error", fig, global_step=trainer.global_step)
-        plt.close(fig)
+            trainer.logger.experiment.add_figure("Mu and sigma error", fig, global_step=trainer.global_step)
+            plt.close(fig)

@@ -38,7 +38,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
         self.losses : list = []
         self.DSB_iteration : int = 0
 
-    def _has_converged(self) -> bool:
+    def has_converged(self) -> bool:
         losses, patience = self.losses, self.hparams.patience
 
         if len(losses) < patience + 1:
@@ -46,13 +46,6 @@ class StandardSchrodingerBridge(BaseLightningModule):
         
         min_loss = min(losses[:-patience])
         return all([l > min_loss for l in losses[-patience:]])
-        
-    def on_train_batch_start(self, batch: Any, batch_idx: int) -> int | None:
-        if self._has_converged():
-            self.DSB_iteration += 1
-            self.hparams.training_backward = not self.hparams.training_backward
-            self.losses = []
-            return -1
         
     def k_to_tensor(self, k : int, size : Tuple[int]) -> Tensor:
         return torch.full((size, 1), k, dtype = torch.float32, device = self.device)

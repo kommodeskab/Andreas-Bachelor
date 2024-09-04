@@ -1,7 +1,6 @@
 defaults:
   - learningratemonitor
   - richprogressbar
-  - schrodinger2d_traj
   - changedataloader
   - plotgammaschedule
-  - modelsummary
+  - gaussiantest
