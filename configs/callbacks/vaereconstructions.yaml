@@ -1,3 +1,0 @@
-vaereconstructions:
-  _target_: src.callbacks.vaecallbacks.VAECallback
-  num_samples: 5
