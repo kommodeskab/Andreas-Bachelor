@@ -91,7 +91,7 @@ class SchrodingerPlot2dCB(pl.Callback):
         min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
 
         for i in range(5):
-            x, y = trajectory[i, :, 0].cpu().numpy(), trajectory[i, :, 1].cpu().numpy()
+            x, y = trajectory[i, :, 0].cpu(), trajectory[i, :, 1].cpu()
             ax[0, i].scatter(x, y, s = 1)
             ax[0, i].set_aspect('equal')
             ax[0, i].set_title(f"Step {traj_idx[i]}")
@@ -105,7 +105,7 @@ class SchrodingerPlot2dCB(pl.Callback):
         min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
 
         for i in range(5):
-            x, y = trajectory[i, :, 0].cpu().numpy(), trajectory[i, :, 1].cpu().numpy()
+            x, y = trajectory[i, :, 0].cpu(), trajectory[i, :, 1].cpu()
             ax[1, i].scatter(x, y, s = 1)
             ax[1, i].set_aspect('equal')
             ax[1, i].set_xlim(min_x, max_x)
@@ -116,8 +116,36 @@ class SchrodingerPlot2dCB(pl.Callback):
         trainer.logger.experiment.add_figure("Forward and backward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
 
+class SchrodingerAudioCB(pl.Callback):
+    def __init__(self):
+        super().__init__()
+
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
+        pl_module.eval()
+        device = pl_module.device
+        sample_rate = trainer.datamodule.sample_rate
+
+        x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
+        xT_pred = pl_module.sample(x0, forward = True)
+
+        for i in range(5):
+            start_audio, end_audio = x0[i, :, :].cpu(), xT_pred[i, :, :].cpu()
+            concat_audio = torch.concatenate([start_audio, end_audio], dim = 0)
+            trainer.logger.experiment.add_audio(f"Forward_sampling_{i}", concat_audio, global_step=trainer.global_step, sample_rate=sample_rate)
+
+        xT = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
+        x0_pred = pl_module.sample(xT, forward = False)
+
+        for i in range(5):
+            start_audio, end_audio = xT[i, :, :].cpu(), x0_pred[i, :, :].cpu()
+            concat_audio = torch.concatenate([start_audio, end_audio], dim = 0)
+            trainer.logger.experiment.add_audio(f"Backward_sampling_{i}", concat_audio, global_step=trainer.global_step, sample_rate=sample_rate)
+
 class SchrodingerPlotImagesCB(pl.Callback):
     def __init__(self):
+        """
+        Plots the forward and backward trajectory of the model on the validation set
+        """
         super().__init__()
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
@@ -133,7 +161,7 @@ class SchrodingerPlotImagesCB(pl.Callback):
         fig, ax = plt.subplots(5, 5, figsize=(20, 20))
         for i in range(5): # i is the index of the trajectory, which should be along the x-axis (columns)
             for j in range(5): # j is the index of the image, which should be along the y-axis (rows)
-                img = trajectory[traj_idx[i], j, :, :, :].permute(1, 2, 0).cpu().numpy()
+                img = trajectory[traj_idx[i], j, :, :, :].permute(1, 2, 0).cpu()
                 ax[i, j].imshow(img)
                 ax[i, j].axis("off")
                 if j == 2:
@@ -149,7 +177,7 @@ class SchrodingerPlotImagesCB(pl.Callback):
         fig, ax = plt.subplots(5, 5, figsize=(20, 20))
         for i in range(5):
             for j in range(5):
-                img = trajectory[traj_idx[i], j, :, :, :].permute(1, 2, 0).cpu().numpy()
+                img = trajectory[traj_idx[i], j, :, :, :].permute(1, 2, 0).cpu()
                 ax[i, j].imshow(img)
                 ax[i, j].axis("off")
                 if j == 2:
@@ -158,7 +186,6 @@ class SchrodingerPlotImagesCB(pl.Callback):
         fig.suptitle(f"Backward trajectory (DSB-iteration: {pl_module.DSB_iteration})", fontsize = 40)
         trainer.logger.experiment.add_figure("Backward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
-
 
 class GaussianTestCB(pl.Callback):
     def __init__(

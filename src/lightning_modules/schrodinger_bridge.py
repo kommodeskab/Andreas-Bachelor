@@ -55,7 +55,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
             return -1
         
     def k_to_tensor(self, k : int, size : Tuple[int]) -> Tensor:
-        return torch.full((size, 1), k, dtype = torch.float32, device = self.device)
+        return torch.full((size, ), k, dtype = torch.float32, device = self.device)
     
     @torch.no_grad()
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
