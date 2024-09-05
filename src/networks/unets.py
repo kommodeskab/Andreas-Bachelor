@@ -1,4 +1,4 @@
-from diffusers import UNet2DModel
+from diffusers import UNet2DModel, UNet1DModel
 import torch
 
 class Unet2D(UNet2DModel):

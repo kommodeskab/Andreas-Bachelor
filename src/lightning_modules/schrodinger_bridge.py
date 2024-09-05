@@ -35,11 +35,11 @@ class StandardSchrodingerBridge(BaseLightningModule):
         self.backward_model : Callable[[Tensor, Tensor], Tensor] = backward_model
         
         self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()        
-        self.losses : list = []
+        self.val_losses : list = []
         self.DSB_iteration : int = 0
 
     def has_converged(self) -> bool:
-        losses, patience = self.losses, self.hparams.patience
+        losses, patience = self.val_losses, self.hparams.patience
 
         if len(losses) < patience + 1:
             return False
@@ -51,7 +51,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
         if self.has_converged():
             self.DSB_iteration += 1
             self.hparams.training_backward = not self.hparams.training_backward
-            self.losses = []
+            self.val_losses = []
             return -1
         
     def k_to_tensor(self, k : int, size : Tuple[int]) -> Tensor:
@@ -221,13 +221,22 @@ class StandardSchrodingerBridge(BaseLightningModule):
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> None:
         if dataloader_idx == 0 and self.hparams.training_backward:
             avg_loss = self._train_backward(batch, validating = True)
-            self.log("backward_loss/val", avg_loss, prog_bar = True)
-            self.losses.append(avg_loss)
+            self.log("backward_loss/val", avg_loss, prog_bar = True, add_dataloader_idx=False)
 
         elif dataloader_idx == 1 and not self.hparams.training_backward:
             avg_loss = self._train_forward(batch, validating = True)
-            self.log("forward_loss/val", avg_loss, prog_bar = True)
-            self.losses.append(avg_loss)
+            self.log("forward_loss/val", avg_loss, prog_bar = True, add_dataloader_idx=False)
+
+    def on_validation_epoch_end(self) -> None:
+        metrics = self.trainer.callback_metrics
+
+        if len(metrics) == 0:
+            return
+        
+        key = "backward_loss/val" if self.hparams.training_backward else "forward_loss/val"
+        val_loss = metrics[key].item()
+
+        self.val_losses.append(val_loss)
         
     def configure_optimizers(self):
         backward_opt = torch.optim.Adam(self.backward_model.parameters(), lr = self.hparams.lr)

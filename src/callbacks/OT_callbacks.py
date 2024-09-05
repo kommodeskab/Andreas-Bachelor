@@ -155,7 +155,7 @@ class SchrodingerPlotImagesCB(pl.Callback):
                 if j == 2:
                     ax[i, j].set_title(f"Step {traj_idx[i]}", fontsize = 20)
 
-        fig.suptitle(f"Backward trajectory (DSB-iteration: {pl_module.DSB_iteration})")
+        fig.suptitle(f"Backward trajectory (DSB-iteration: {pl_module.DSB_iteration})", fontsize = 40)
         trainer.logger.experiment.add_figure("Backward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
 

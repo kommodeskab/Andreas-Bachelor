@@ -16,7 +16,7 @@ backward_model:
   hidden_size: 256
   time_encoding_size: 64
 
-patience: 200
+patience: 5
 max_gamma: 0.01
 min_gamma: 0.01
 num_steps: 100

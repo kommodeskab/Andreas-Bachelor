@@ -5,4 +5,4 @@ reload_dataloaders_every_n_epochs: 1
 fast_dev_run: False
 val_check_interval: 0.1
 limit_train_batches: 100
-# limit_val_batches: 10
+limit_val_batches: 5
