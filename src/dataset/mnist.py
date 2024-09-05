@@ -6,9 +6,7 @@ class FilteredMNIST(Dataset):
         self, 
         download : bool = False, 
         digit : int = 0,
-        size : int = None
         ):
-        self.size = size
         root = "data"
         transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((32, 32))])
         self.mnist_dataset = datasets.MNIST(root=root, transform=transform, download=download)
@@ -16,7 +14,7 @@ class FilteredMNIST(Dataset):
         self.indices = [i for i, label in enumerate(self.mnist_dataset.targets) if label == self.digit]
 
     def __len__(self):
-        return len(self.indices) if self.size is None else min(len(self.indices), self.size)
+        return len(self.indices)
 
     def __getitem__(self, idx):
         original_idx = self.indices[idx]

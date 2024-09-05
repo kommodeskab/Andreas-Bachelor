@@ -7,6 +7,10 @@ from omegaconf import OmegaConf
 from src.utils import get_ckpt_path, instantiate_callbacks
 import torch
 import pytorch_lightning as pl
+import os
+
+os.environ["HYDRA_FULL_ERROR"] = "1"
+os.environ["USE_FLASH_ATTENTION"] = "1"
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def my_app(cfg : DictConfig) -> None:

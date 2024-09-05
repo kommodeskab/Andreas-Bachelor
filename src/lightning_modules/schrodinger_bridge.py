@@ -46,6 +46,13 @@ class StandardSchrodingerBridge(BaseLightningModule):
         
         min_loss = min(losses[:-patience])
         return all([l > min_loss for l in losses[-patience:]])
+    
+    def on_train_batch_start(self, batch : Tensor, batch_idx : int) -> None:
+        if self.has_converged():
+            self.DSB_iteration += 1
+            self.hparams.training_backward = not self.hparams.training_backward
+            self.losses = []
+            return -1
         
     def k_to_tensor(self, k : int, size : Tuple[int]) -> Tensor:
         return torch.full((size, 1), k, dtype = torch.float32, device = self.device)
@@ -141,7 +148,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
             
         return trajectory if return_trajectory else xk
     
-    def _train_backward(self, x0 : Tensor, validating : bool = False) -> dict[str, float]:
+    def _train_backward(self, x0 : Tensor, validating : bool = False) -> float:
         """
         Given the start point x0, train the backward model
         
@@ -167,14 +174,10 @@ class StandardSchrodingerBridge(BaseLightningModule):
             batch_losses[i] = loss.item()
             
         avg_loss = batch_losses.mean().item()
-        self.losses.append(avg_loss)
         
-        return {
-            "backward_loss": avg_loss,
-            "forward_loss": 0
-        }
+        return avg_loss
     
-    def _train_forward(self, xN : Tensor, validating : bool = False) -> dict[str, float]:
+    def _train_forward(self, xN : Tensor, validating : bool = False) -> float:
         """
         Given the end point xN, train the forward model
 
@@ -201,31 +204,31 @@ class StandardSchrodingerBridge(BaseLightningModule):
             batch_losses[i] = loss.item()
             
         avg_loss = batch_losses.mean().item()
-        self.losses.append(avg_loss)
         
-        return {
-            "backward_loss": 0,
-            "forward_loss": avg_loss
-        }
+        return avg_loss
     
     def training_step(self, batch : Tensor, batch_idx : int) -> None:
         if self.hparams.training_backward:
-            losses = self._train_backward(batch)
+            avg_loss = self._train_backward(batch)
+            self.log("backward_loss/train", avg_loss, prog_bar = True)
         else:
-            losses = self._train_forward(batch)
-        
-        self.log_dict(self._convert_dict_losses(losses, "train"), prog_bar = True)
+            avg_loss = self._train_forward(batch)
+            self.log("forward_loss/train", avg_loss, prog_bar = True)
+
         self.log("DSB_iteration", self.DSB_iteration, prog_bar = True)
     
     @torch.no_grad()
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> None:
-        if dataloader_idx == 0: # returns the "start" dataset, i.e. we are testing the backward model
-            losses = self._train_backward(batch, validating = True)
-        else:
-            losses = self._train_forward(batch, validating = True)
-        
-        self.log_dict(self._convert_dict_losses(losses, "val"), prog_bar = True)
+        if dataloader_idx == 0 and self.hparams.training_backward:
+            avg_loss = self._train_backward(batch, validating = True)
+            self.log("backward_loss/val", avg_loss, prog_bar = True)
+            self.losses.append(avg_loss)
 
+        elif dataloader_idx == 1 and not self.hparams.training_backward:
+            avg_loss = self._train_forward(batch, validating = True)
+            self.log("forward_loss/val", avg_loss, prog_bar = True)
+            self.losses.append(avg_loss)
+        
     def configure_optimizers(self):
         backward_opt = torch.optim.Adam(self.backward_model.parameters(), lr = self.hparams.lr)
         forward_opt = torch.optim.Adam(self.forward_model.parameters(), lr = self.hparams.lr)

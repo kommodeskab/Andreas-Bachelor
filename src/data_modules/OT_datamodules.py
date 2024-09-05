@@ -10,7 +10,7 @@ class StandardSchrodingerDM(pl.LightningDataModule):
         self,
         start_dataset : Dataset,
         end_dataset : Dataset,
-        train_val_split : float = 0.9,
+        train_val_split : float = 0.95,
         training_backward : bool = True,
         batch_size : int = 10,
         num_workers: int = 4,
@@ -83,17 +83,15 @@ class OneAndSevenSchrodingerDM(StandardSchrodingerDM):
     def __init__(
         self,
         batch_size : int = 10,
-        size : int | None = None
     ):
         start_dataset = FilteredMNIST(
             download = True, 
             digit = 1,
-            size = size
             )
+        
         end_dataset = FilteredMNIST(
             download = True,
             digit = 7,
-            size = size
             )
         
         super().__init__(

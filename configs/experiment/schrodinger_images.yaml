@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - override /trainer: gpu
+  - override /data: mnist
+  - override /callbacks: schrodinger_images
+  - override /model: schrodinger_images
+
+project_name: 'Bachelor'
+task_name: 'schrodinger_images'

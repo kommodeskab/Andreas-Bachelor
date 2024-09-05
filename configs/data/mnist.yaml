@@ -1,3 +1,2 @@
-_target_: src.data_modules.mnistdatamodule.MNISTDataModule
-batch_size: 32
-num_workers: 4
+_target_: src.data_modules.OT_datamodules.OneAndSevenSchrodingerDM
+batch_size: 16

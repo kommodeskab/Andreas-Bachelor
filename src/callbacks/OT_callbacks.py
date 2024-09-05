@@ -23,11 +23,6 @@ class SchrodingerChangeDataloaderCB(pl.Callback):
         assert trainer.datamodule.hparams.training_backward == pl_module.hparams.training_backward, "DataModule and model must have the same training_backward"
         
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
-        if pl_module.has_converged():
-            pl_module.DSB_iteration += 1
-            pl_module.hparams.training_backward = not pl_module.hparams.training_backward
-            self.losses = []
-        
         trainer.datamodule.hparams.training_backward = pl_module.hparams.training_backward
 
 class PlotGammaScheduleCB(pl.Callback):
@@ -50,19 +45,19 @@ class PlotGammaScheduleCB(pl.Callback):
         plt.close(fig)
         
         if hasattr(pl_module, "gammas_bar"):
-            gammas_bar = pl_module.gammas_bar[1:]
+            gammas_bar = pl_module.gammas_bar
             fig = make_gamma_plot(gammas_bar, "Gamma bar", "Gamma bar schedule")
             trainer.logger.experiment.add_figure("gammaschedule/Gamma bar schedule", fig, global_step=trainer.global_step)
             plt.close(fig)
             
         if hasattr(pl_module, "sigma_backward"):
-            sigma_backward = pl_module.sigma_backward[1:]
+            sigma_backward = pl_module.sigma_backward
             fig = make_gamma_plot(sigma_backward, "Sigma backward", "Sigma backward schedule")
             trainer.logger.experiment.add_figure("gammaschedule/Sigma backward schedule", fig, global_step=trainer.global_step)
             plt.close(fig)
             
         if hasattr(pl_module, "sigma_forward"):
-            sigma_forward = pl_module.sigma_forward[1:]
+            sigma_forward = pl_module.sigma_forward
             fig = make_gamma_plot(sigma_forward, "Sigma forward", "Sigma forward schedule")
             trainer.logger.experiment.add_figure("gammaschedule/Sigma forward schedule", fig, global_step=trainer.global_step)
             plt.close(fig)
@@ -74,10 +69,10 @@ class SchrodingerPlot2dCB(pl.Callback):
         ):
         super().__init__()
         self.num_samples = num_samples
-        
-    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
-        device = pl_module.device
+    
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
         pl_module.eval()
+        device = pl_module.device
         
         start_dataset = trainer.datamodule.start_dataset_train
         end_dataset = trainer.datamodule.end_dataset_train
@@ -102,7 +97,7 @@ class SchrodingerPlot2dCB(pl.Callback):
             ax[0, i].set_title(f"Step {traj_idx[i]}")
             ax[0, i].set_xlim(min_x, max_x)
             ax[0, i].set_ylim(min_y, max_y)
-
+        
         # then go backward
         trajectory = pl_module.sample(xT, forward = False, return_trajectory=True)
         trajectory = trajectory[traj_idx, :, :]
@@ -121,6 +116,50 @@ class SchrodingerPlot2dCB(pl.Callback):
         trainer.logger.experiment.add_figure("Forward and backward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
 
+class SchrodingerPlotImagesCB(pl.Callback):
+    def __init__(self):
+        super().__init__()
+
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
+        pl_module.eval()
+        device = pl_module.device
+
+        x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
+        trajectory = pl_module.sample(x0, forward = True, return_trajectory = True)
+
+        traj_len = trajectory.shape[0]
+        traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
+
+        fig, ax = plt.subplots(5, 5, figsize=(20, 20))
+        for i in range(5): # i is the index of the trajectory, which should be along the x-axis (columns)
+            for j in range(5): # j is the index of the image, which should be along the y-axis (rows)
+                img = trajectory[traj_idx[i], j, :, :, :].permute(1, 2, 0).cpu().numpy()
+                ax[i, j].imshow(img)
+                ax[i, j].axis("off")
+                if j == 2:
+                    ax[i, j].set_title(f"Step {traj_idx[i]}", fontsize = 20)
+
+        fig.suptitle(f"Forward trajectory (DSB-iteration: {pl_module.DSB_iteration})")
+        trainer.logger.experiment.add_figure("Forward trajectory", fig, global_step=trainer.global_step)
+        plt.close(fig)
+        
+        xT = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
+        trajectory = pl_module.sample(xT, forward = False, return_trajectory = True)
+
+        fig, ax = plt.subplots(5, 5, figsize=(20, 20))
+        for i in range(5):
+            for j in range(5):
+                img = trajectory[traj_idx[i], j, :, :, :].permute(1, 2, 0).cpu().numpy()
+                ax[i, j].imshow(img)
+                ax[i, j].axis("off")
+                if j == 2:
+                    ax[i, j].set_title(f"Step {traj_idx[i]}", fontsize = 20)
+
+        fig.suptitle(f"Backward trajectory (DSB-iteration: {pl_module.DSB_iteration})")
+        trainer.logger.experiment.add_figure("Backward trajectory", fig, global_step=trainer.global_step)
+        plt.close(fig)
+
+
 class GaussianTestCB(pl.Callback):
     def __init__(
             self,
@@ -132,10 +171,11 @@ class GaussianTestCB(pl.Callback):
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
         pl_module.gaussian_test_results = {}
 
-    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
+        pl_module.eval()
         current_dsb_iteration = pl_module.DSB_iteration
 
-        x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_train, self.num_samples).to(pl_module.device)
+        x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_samples).to(pl_module.device)
         xT_pred = pl_module.sample(x0, forward = True)
         xT_pred_mu, xT_pred_sigma = xT_pred.mean(dim = 0), xT_pred.std(dim = 0)
         xT_real_mu, xT_real_sigma = trainer.datamodule.end_mu.to(pl_module.device), trainer.datamodule.end_sigma.to(pl_module.device)
