@@ -1,13 +1,11 @@
-import hydra
 from omegaconf import DictConfig
 from pytorch_lightning import Trainer
 from pytorch_lightning.loggers import TensorBoardLogger
 from clearml import Task
 from omegaconf import OmegaConf
 from src.utils import get_ckpt_path, instantiate_callbacks
-import torch
 import pytorch_lightning as pl
-import os
+import os, yaml, hydra, torch
 
 os.environ["HYDRA_FULL_ERROR"] = "1"
 os.environ["USE_FLASH_ATTENTION"] = "1"
@@ -27,6 +25,7 @@ def my_app(cfg : DictConfig) -> None:
     
     datamodule = hydra.utils.instantiate(cfg.data)
     model = hydra.utils.instantiate(cfg.model)
+    task.upload_artifact("hyperparameters", yaml.dump(model.hparams))
     
     logger = TensorBoardLogger("logs", name = cfg.project_name, version = task.id, default_hp_metric = False)
     

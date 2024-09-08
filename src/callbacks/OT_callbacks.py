@@ -18,12 +18,12 @@ class SchrodingerChangeDataloaderCB(pl.Callback):
         super().__init__()
         
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
-        assert hasattr(trainer.datamodule.hparams, "training_backward"), "DataModule must have attribute training_backward"
-        assert hasattr(pl_module.hparams, "training_backward"), "Model must have attribute training_backward"
-        assert trainer.datamodule.hparams.training_backward == pl_module.hparams.training_backward, "DataModule and model must have the same training_backward"
+        assert hasattr(trainer.datamodule, "training_backward"), "DataModule must have attribute training_backward"
+        assert hasattr(pl_module, "training_backward"), "Model must have attribute training_backward"
+        assert trainer.datamodule.training_backward == pl_module.training_backward, "DataModule and model must have the same training_backward"
         
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
-        trainer.datamodule.hparams.training_backward = pl_module.hparams.training_backward
+        trainer.datamodule.training_backward = pl_module.training_backward
 
 class PlotGammaScheduleCB(pl.Callback):
     def __init__(self):

@@ -10,7 +10,3 @@ class BaseLightningModule(pl.LightningModule):
         if prefix:
             losses = {f"{prefix}/{k}": v for k, v in losses.items()}
         return losses
-    
-    def on_train_start(self) -> None:
-        hparams = self._convert_dict_losses(self.hparams, prefix="hparams")
-        self.log_dict(hparams)

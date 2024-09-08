@@ -11,19 +11,19 @@ class StandardSchrodingerDM(pl.LightningDataModule):
         start_dataset : Dataset,
         end_dataset : Dataset,
         train_val_split : float = 0.95,
-        training_backward : bool = True,
         batch_size : int = 10,
         num_workers: int = 4,
         ):
         
         super().__init__()
         self.save_hyperparameters(ignore=["start_dataset", "end_dataset"])
+        self.training_backward : bool = True
                 
         self.start_dataset_train, self.start_dataset_val = random_split(start_dataset, [train_val_split, 1 - train_val_split])
         self.end_dataset_train, self.end_dataset_val = random_split(end_dataset, [train_val_split, 1 - train_val_split])
     
     def train_dataloader(self):
-        if self.hparams.training_backward:
+        if self.training_backward:
             return DataLoader(self.start_dataset_train, batch_size = self.hparams.batch_size, shuffle = True, num_workers = self.hparams.num_workers, persistent_workers=True)
         else:
             return DataLoader(self.end_dataset_train, batch_size = self.hparams.batch_size, shuffle = True, num_workers = self.hparams.num_workers, persistent_workers=True)

@@ -1,8 +1,9 @@
-import pytorch_lightning as pl
 import torch
 from typing import Tuple, Any, Callable
 from torch import Tensor
 from src.lightning_modules.baselightningmodule import BaseLightningModule
+from torch.optim import Adam
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 class StandardSchrodingerBridge(BaseLightningModule):
     def __init__(
@@ -13,13 +14,13 @@ class StandardSchrodingerBridge(BaseLightningModule):
         min_gamma : float = None,
         num_steps : int = None,
         strict_gammas : bool = True,
-        training_backward : bool = True,
         patience: int = 100,
         lr : float = 1e-3,
     ):
         super().__init__()
         self.save_hyperparameters(ignore = ["forward_model", "backward_model"])
         self.automatic_optimization : bool = False
+        self.training_backward : bool = True
 
         assert max_gamma >= min_gamma, f"{max_gamma = } must be greater than {min_gamma = }"
         gammas = torch.linspace(min_gamma, 2 * max_gamma - min_gamma, num_steps)
@@ -28,7 +29,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
         self.gammas = gammas
         
         if strict_gammas:
-            gammas_sum = gammas.sum()
+            gammas_sum = gammas.sum().item()
             assert abs(1 - gammas_sum) < 1e-3, f"The sum of gammas must be equal to 1, but got {gammas_sum = }"
         
         self.forward_model : Callable[[Tensor, Tensor], Tensor] = forward_model
@@ -49,11 +50,13 @@ class StandardSchrodingerBridge(BaseLightningModule):
     
     def on_train_batch_start(self, batch : Tensor, batch_idx : int) -> None:
         if self.has_converged():
-            self.DSB_iteration += 0.5
-            self.hparams.training_backward = not self.hparams.training_backward
+            if not self.training_backward: 
+                self.DSB_iteration += 0.5
+                
+            self.training_backward = not self.training_backward
             self.val_losses = []
             return -1
-        
+    
     def k_to_tensor(self, k : int, size : Tuple[int]) -> Tensor:
         return torch.full((size, ), k, dtype = torch.float32, device = self.device)
     
@@ -208,7 +211,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
         return avg_loss
     
     def training_step(self, batch : Tensor, batch_idx : int) -> None:
-        if self.hparams.training_backward:
+        if self.training_backward:
             avg_loss = self._train_backward(batch)
             self.log("backward_loss/train", avg_loss, prog_bar = True)
         else:
@@ -219,12 +222,16 @@ class StandardSchrodingerBridge(BaseLightningModule):
     
     @torch.no_grad()
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> None:
-        if dataloader_idx == 0 and self.hparams.training_backward:
+        backward_scheduler, forward_scheduler = self.lr_schedulers()
+        
+        if dataloader_idx == 0 and self.training_backward:
             avg_loss = self._train_backward(batch, validating = True)
+            backward_scheduler.step(avg_loss)
             self.log("backward_loss/val", avg_loss, prog_bar = True, add_dataloader_idx=False)
 
-        elif dataloader_idx == 1 and not self.hparams.training_backward:
+        elif dataloader_idx == 1 and not self.training_backward:
             avg_loss = self._train_forward(batch, validating = True)
+            forward_scheduler.step(avg_loss)
             self.log("forward_loss/val", avg_loss, prog_bar = True, add_dataloader_idx=False)
 
     def on_validation_epoch_end(self) -> None:
@@ -233,16 +240,28 @@ class StandardSchrodingerBridge(BaseLightningModule):
         if len(metrics) == 0:
             return
         
-        key = "backward_loss/val" if self.hparams.training_backward else "forward_loss/val"
+        key = "backward_loss/val" if self.training_backward else "forward_loss/val"
         val_loss = metrics[key].item()
 
         self.val_losses.append(val_loss)
         
     def configure_optimizers(self):
-        backward_opt = torch.optim.Adam(self.backward_model.parameters(), lr = self.hparams.lr)
-        forward_opt = torch.optim.Adam(self.forward_model.parameters(), lr = self.hparams.lr)
+        backward_opt = Adam(self.backward_model.parameters(), lr = self.hparams.lr)
+        forward_opt = Adam(self.forward_model.parameters(), lr = self.hparams.lr)
         
-        return [backward_opt, forward_opt], []
+        # convergence will happen after 'patience' validation steps with no improvement
+        # therefore reduce the lr after 'patience // 2' validation steps with no improvement
+        lr_patience = self.hparams.patience // 2
+        backward_scheduler = {
+            'scheduler': ReduceLROnPlateau(backward_opt, patience = lr_patience),
+            'name': 'lr_scheduler_backward',
+        }
+        forward_scheduler = {
+            'scheduler': ReduceLROnPlateau(forward_opt, patience = lr_patience),
+            'name': 'lr_scheduler_forward',
+        }
+        
+        return [backward_opt, forward_opt], [backward_scheduler, forward_scheduler]
         
 class ClassicSchrodingerBridge(StandardSchrodingerBridge):
     def __init__(self, **kwargs):
