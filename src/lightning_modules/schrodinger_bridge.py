@@ -51,7 +51,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
     def on_train_batch_start(self, batch : Tensor, batch_idx : int) -> None:
         if self.has_converged():
             if not self.training_backward: 
-                self.DSB_iteration += 0.5
+                self.DSB_iteration += 1
                 
             self.training_backward = not self.training_backward
             self.val_losses = []
@@ -251,13 +251,16 @@ class StandardSchrodingerBridge(BaseLightningModule):
         
         # convergence will happen after 'patience' validation steps with no improvement
         # therefore reduce the lr after 'patience // 2' validation steps with no improvement
-        lr_patience = self.hparams.patience // 2
+        lr_args = {
+            'patience': self.hparams.patience // 2,
+            'factor': 0.5,
+        }
         backward_scheduler = {
-            'scheduler': ReduceLROnPlateau(backward_opt, patience = lr_patience),
+            'scheduler': ReduceLROnPlateau(backward_opt, **lr_args),
             'name': 'lr_scheduler_backward',
         }
         forward_scheduler = {
-            'scheduler': ReduceLROnPlateau(forward_opt, patience = lr_patience),
+            'scheduler': ReduceLROnPlateau(forward_opt, **lr_args),
             'name': 'lr_scheduler_forward',
         }
         
