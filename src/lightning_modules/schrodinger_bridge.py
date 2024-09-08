@@ -49,12 +49,33 @@ class StandardSchrodingerBridge(BaseLightningModule):
         return all([l > min_loss for l in losses[-patience:]])
     
     def on_train_batch_start(self, batch : Tensor, batch_idx : int) -> None:
+        """
+        here we check if the model has converged
+        if the model has converged we do the following:
+        - switch the training direction
+        - reset the val_losses
+        - reset the learning rate of the optimizer
+        - reset the learning rate scheduler
+        we also return -1 to skip the rest of the epoch if converged
+        
+        """
+
         if self.has_converged():
             if not self.training_backward: 
                 self.DSB_iteration += 1
                 
             self.training_backward = not self.training_backward
             self.val_losses = []
+            
+            # resetting the learning rate
+            for optimizer in self.optimizers():
+                for pg in optimizer.param_groups:
+                    pg['lr'] = self.hparams.lr
+                    
+            # resetting the learning rate scheduler
+            for scheduler in self.lr_schedulers():
+                scheduler.num_bad_epochs = 0
+            
             return -1
     
     def k_to_tensor(self, k : int, size : Tuple[int]) -> Tensor:
