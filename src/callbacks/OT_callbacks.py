@@ -70,7 +70,7 @@ class SchrodingerPlot2dCB(pl.Callback):
         super().__init__()
         self.num_samples = num_samples
     
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
         pl_module.eval()
         device = pl_module.device
         
@@ -80,40 +80,48 @@ class SchrodingerPlot2dCB(pl.Callback):
         x0 = get_batch_from_dataset(start_dataset, self.num_samples).to(device)
         xT = get_batch_from_dataset(end_dataset, self.num_samples).to(device)
 
-        fig, ax = plt.subplots(2, 5, figsize=(20, 10))
         # first go forward
         trajectory = pl_module.sample(x0, forward = True, return_trajectory=True)
         traj_len = trajectory.shape[0]
         # only keep 5 trajectories, the start, the end and 3 in between
         traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
-        trajectory = trajectory[traj_idx, :, :]
+        trajectory_to_plot = trajectory[traj_idx, :, :]
         min_x, max_x = trajectory[:, :, 0].min(), trajectory[:, :, 0].max()
         min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
 
+        # plot the forward trajectory
+        # only include 10 points (or less if there are less than 10)
+        fig, ax = plt.subplots(1, 5, figsize=(20, 4))
+        colors = torch.sqrt(x0[:, 0] ** 2 + x0[:, 1] ** 2).tolist()
         for i in range(5):
-            x, y = trajectory[i, :, 0].cpu(), trajectory[i, :, 1].cpu()
-            ax[0, i].scatter(x, y, s = 1)
-            ax[0, i].set_aspect('equal')
-            ax[0, i].set_title(f"Step {traj_idx[i]}")
-            ax[0, i].set_xlim(min_x, max_x)
-            ax[0, i].set_ylim(min_y, max_y)
+            x, y = trajectory_to_plot[i, :, 0].cpu(), trajectory_to_plot[i, :, 1].cpu()
+            ax[i].scatter(x, y, s = 1, c = colors, cmap = "viridis")
+            ax[i].set_aspect('equal')
+            ax[i].set_title(f"Step {traj_idx[i]}")
+            ax[i].set_xlim(min_x, max_x)
+            ax[i].set_ylim(min_y, max_y)
         
+        fig.suptitle(f"Forward trajectory (DSB-iteration: {pl_module.DSB_iteration})", fontsize = 20)
+        trainer.logger.experiment.add_figure("Forward trajectory", fig, global_step=trainer.global_step)
+        plt.close(fig)
+
         # then go backward
         trajectory = pl_module.sample(xT, forward = False, return_trajectory=True)
-        trajectory = trajectory[traj_idx, :, :]
+        trajectory_to_plot = trajectory[traj_idx, :, :]
         min_x, max_x = trajectory[:, :, 0].min(), trajectory[:, :, 0].max()
         min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
 
+        fig, ax = plt.subplots(1, 5, figsize=(20, 4))
+        colors = torch.sqrt(xT[:, 0] ** 2 + xT[:, 1] ** 2).tolist()
         for i in range(5):
-            x, y = trajectory[i, :, 0].cpu(), trajectory[i, :, 1].cpu()
-            ax[1, i].scatter(x, y, s = 1)
-            ax[1, i].set_aspect('equal')
-            ax[1, i].set_xlim(min_x, max_x)
-            ax[1, i].set_ylim(min_y, max_y)
+            x, y = trajectory_to_plot[i, :, 0].cpu(), trajectory_to_plot[i, :, 1].cpu()
+            ax[i].scatter(x, y, s = 1, c = colors, cmap = "viridis")
+            ax[i].set_aspect('equal')
+            ax[i].set_xlim(min_x, max_x)
+            ax[i].set_ylim(min_y, max_y)
 
-        fig.suptitle(f"Forward and backward trajectory (DSB-iteration: {pl_module.DSB_iteration})")
-
-        trainer.logger.experiment.add_figure("Forward and backward trajectory", fig, global_step=trainer.global_step)
+        fig.suptitle(f"Backward trajectory (DSB-iteration: {pl_module.DSB_iteration})", fontsize = 20)
+        trainer.logger.experiment.add_figure("Backward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
 
 class SchrodingerAudioCB(pl.Callback):

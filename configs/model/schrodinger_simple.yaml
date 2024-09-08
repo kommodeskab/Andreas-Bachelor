@@ -1,0 +1,23 @@
+_target_: src.lightning_modules.schrodinger_bridge.FRSchrodingerBridge
+
+forward_model:
+  _target_: src.networks.simple_models.FFNWithTimeEncoding
+  in_features: 2
+  out_features: 2
+  num_layers: 5
+  hidden_size: 256
+  time_encoding_size: 128
+
+backward_model:
+  _target_: src.networks.simple_models.FFNWithTimeEncoding
+  in_features: 2
+  out_features: 2
+  num_layers: 5
+  hidden_size: 256
+  time_encoding_size: 128
+
+patience: 10
+max_gamma: 0.1
+min_gamma: 0.1
+num_steps: 10
+lr: 0.0001

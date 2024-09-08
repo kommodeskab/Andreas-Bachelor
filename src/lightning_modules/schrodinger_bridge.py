@@ -49,7 +49,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
     
     def on_train_batch_start(self, batch : Tensor, batch_idx : int) -> None:
         if self.has_converged():
-            self.DSB_iteration += 1
+            self.DSB_iteration += 0.5
             self.hparams.training_backward = not self.hparams.training_backward
             self.val_losses = []
             return -1
@@ -245,7 +245,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
         return [backward_opt, forward_opt], []
         
 class ClassicSchrodingerBridge(StandardSchrodingerBridge):
-    def __init__(**kwargs):
+    def __init__(self, **kwargs):
         super().__init__(**kwargs)
     
     @torch.no_grad()

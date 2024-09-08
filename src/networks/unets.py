@@ -1,7 +1,7 @@
 from diffusers import UNet2DModel, UNet1DModel
 import torch
 
-class Unet2D(UNet2DModel):
+class UNet2D(UNet2DModel):
     def __init__(
         self,
         **kwargs,
@@ -9,10 +9,9 @@ class Unet2D(UNet2DModel):
         super().__init__(**kwargs)
 
     def forward(self, x : torch.Tensor, time_step : torch.Tensor):
-        time_step = time_step.flatten()
         return super().forward(x, time_step).sample
     
-class Unet1D(UNet1DModel):
+class UNet1D(UNet1DModel):
     def __init__(
         self,
         **kwargs,
@@ -20,7 +19,6 @@ class Unet1D(UNet1DModel):
         super().__init__(**kwargs)
 
     def forward(self, x : torch.Tensor, time_step : torch.Tensor):
-        time_step = time_step.flatten()
         return super().forward(x, time_step).sample
     
 class UNet0D(UNet1DModel):
@@ -42,11 +40,10 @@ class UNet0D(UNet1DModel):
             block_out_channels=block_out_channels,
             )
         
-        self.in_features_lin = torch.nn.Linear(in_features, 128)
-        self.out_features_lin = torch.nn.Linear(128, out_features)
+        self.in_features_lin = torch.nn.Linear(in_features, 64)
+        self.out_features_lin = torch.nn.Linear(64, out_features)
 
     def forward(self, x : torch.Tensor, time_step : torch.Tensor):
-        time_step = time_step.flatten()
         x = self.in_features_lin(x).unsqueeze(1)
         x = super().forward(x, time_step).sample
         x = x.squeeze(1)
