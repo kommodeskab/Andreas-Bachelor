@@ -2,8 +2,9 @@ import torch
 from typing import Tuple, Any, Callable
 from torch import Tensor
 from src.lightning_modules.baselightningmodule import BaseLightningModule
-from torch.optim import Adam
+from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import ReduceLROnPlateau
+from torch.nn.utils import clip_grad_norm_
 
 class StandardSchrodingerBridge(BaseLightningModule):
     def __init__(
@@ -192,6 +193,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
             if not validating:
                 backward_opt.zero_grad()
                 self.manual_backward(loss)
+                clip_grad_norm_(self.backward_model.parameters(), 1)
                 backward_opt.step()
                 
             xk = xk_plus_one
@@ -222,6 +224,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
             if not validating:
                 forward_opt.zero_grad()
                 self.manual_backward(loss)
+                clip_grad_norm_(self.forward_model.parameters(), 1)
                 forward_opt.step()
                 
             xk_plus_one = xk
@@ -242,33 +245,34 @@ class StandardSchrodingerBridge(BaseLightningModule):
         self.log("DSB_iteration", self.DSB_iteration, prog_bar = True)
     
     @torch.no_grad()
-    def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> None:
-        backward_scheduler, forward_scheduler = self.lr_schedulers()
-        
+    def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> None:        
         if dataloader_idx == 0 and self.training_backward:
             avg_loss = self._train_backward(batch, validating = True)
-            backward_scheduler.step(avg_loss)
             self.log("backward_loss/val", avg_loss, prog_bar = True, add_dataloader_idx=False)
 
         elif dataloader_idx == 1 and not self.training_backward:
             avg_loss = self._train_forward(batch, validating = True)
-            forward_scheduler.step(avg_loss)
             self.log("forward_loss/val", avg_loss, prog_bar = True, add_dataloader_idx=False)
 
     def on_validation_epoch_end(self) -> None:
+        backward_scheduler, forward_scheduler = self.lr_schedulers()
         metrics = self.trainer.callback_metrics
 
         if len(metrics) == 0:
             return
         
-        key = "backward_loss/val" if self.training_backward else "forward_loss/val"
-        val_loss = metrics[key].item()
+        if self.training_backward:
+            val_loss = metrics["backward_loss/val"].item()
+            backward_scheduler.step(val_loss)
+        else:
+            val_loss = metrics["forward_loss/val"].item()
+            forward_scheduler.step(val_loss)
 
         self.val_losses.append(val_loss)
         
     def configure_optimizers(self):
-        backward_opt = Adam(self.backward_model.parameters(), lr = self.hparams.lr)
-        forward_opt = Adam(self.forward_model.parameters(), lr = self.hparams.lr)
+        backward_opt = AdamW(self.backward_model.parameters(), lr = self.hparams.lr)
+        forward_opt = AdamW(self.forward_model.parameters(), lr = self.hparams.lr)
         
         # convergence will happen after 'patience' validation steps with no improvement
         # therefore reduce the lr after 'patience // 2' validation steps with no improvement

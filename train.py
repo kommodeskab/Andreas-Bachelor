@@ -28,6 +28,7 @@ def my_app(cfg : DictConfig) -> None:
     task.upload_artifact("hyperparameters", yaml.dump(model.hparams))
     
     logger = TensorBoardLogger("logs", name = cfg.project_name, version = task.id, default_hp_metric = False)
+    logger.log_hyperparams(model.hparams)
     
     callbacks = instantiate_callbacks(cfg.get("callbacks", None))
     

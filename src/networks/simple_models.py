@@ -17,52 +17,55 @@ def sinusoidal_encoding(tensor, enc_size, exponential_base = 10000.0):
 
     return position
 
-class TimeEncodingBlock(nn.Module):
+class MLP(nn.Module):
     def __init__(
         self,
-        in_features : int,
-        out_features : int,
-        time_encoding_size : int,
+        in_features: int,
+        layer_sizes: list[int] = [64, 64],
     ):
         super().__init__()
-        self.x_encoder = nn.Linear(in_features, out_features)
-        self.time_encoder = nn.Linear(time_encoding_size, out_features)
-        self.activation = nn.ReLU()
+        # out_features = layer_sizes[-1]
 
-    def forward(self, x, time_encoding):
-        x_enc = self.x_encoder(x)
-        x_enc = self.activation(x_enc)
+        self.layers = nn.ModuleList()
+        for i, out_features in enumerate(layer_sizes):
+            self.layers.append(nn.Linear(in_features, out_features))
+            in_features = out_features
 
-        time_enc = self.time_encoder(time_encoding)
-        time_enc = self.activation(time_enc)
+        self.activation = nn.SiLU()
+        self.dropout = nn.Dropout(0.1)
 
-        out = x_enc + time_enc
-        
-        return out
+    def forward(self, x):
+        for i, layer in enumerate(self.layers):
+            x = layer(x)
+            if i != len(self.layers) - 1:
+                x = self.activation(x)
+                x = self.dropout(x)
+        return x
 
-class FFNWithTimeEncoding(BaseTorchModule):
+class SimpleNetwork(BaseTorchModule):
     def __init__(
         self,
-        in_features : int,
-        out_features : int,
-        num_layers : int = 2,
-        hidden_size : int = 64,
-        time_encoding_size : int = 8,
-        exponential_base : float = 10000.0
+        in_features: int,
+        out_features: int,
+        encoder_layers: list[int] = [16],
+        decoder_layers: list[int] = [128, 128],
+        time_encoding_size: int = 16,
     ):
         super().__init__()
+        middle_size = 2 * time_encoding_size
         self.time_encoding_size = time_encoding_size
-        self.exponential_base = exponential_base
-        sizes = [in_features] + [hidden_size] * (num_layers - 1)
-        self.blocks = nn.ModuleList(
-            [TimeEncodingBlock(sizes[i], sizes[i + 1], time_encoding_size) for i in range(len(sizes) - 1)]
-            )
-        self.final_layer = nn.Linear(hidden_size, out_features)
+        self.x_encoder = MLP(in_features, encoder_layers + [middle_size])
+        self.time_encoder = MLP(time_encoding_size, encoder_layers + [middle_size])
+        self.decoder = MLP(2 * middle_size, decoder_layers + [out_features])
 
     def forward(self, x : torch.Tensor, t : torch.Tensor):
         t = t.unsqueeze(1)
-        time_encoding = sinusoidal_encoding(t, self.time_encoding_size, self.exponential_base)
-        for block in self.blocks:
-            x = block(x, time_encoding)
-        x = self.final_layer(x)
-        return x
+        time_encoding = sinusoidal_encoding(t, self.time_encoding_size)
+
+        x_enc = self.x_encoder(x)
+        time_enc = self.time_encoder(time_encoding)
+
+        out = torch.cat([x_enc, time_enc], dim = 1)
+        out = self.decoder(out)
+
+        return out
