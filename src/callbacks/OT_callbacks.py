@@ -8,23 +8,6 @@ from src.callbacks.utils import get_batch_from_dataset
 
 matplotlib.use('Agg')
 
-class SchrodingerChangeDataloaderCB(pl.Callback):
-    def __init__(self):
-        """
-        Makes sure that the datamodule returns the correct data,
-        i.e. that the training_backward attribute of the datamodule is the same as for the model.
-        Handling whether the model is training backward or forward is determined inside the model itself.
-        """
-        super().__init__()
-        
-    def on_train_start(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
-        assert hasattr(trainer.datamodule, "training_backward"), "DataModule must have attribute training_backward"
-        assert hasattr(pl_module, "training_backward"), "Model must have attribute training_backward"
-        assert trainer.datamodule.training_backward == pl_module.training_backward, "DataModule and model must have the same training_backward"
-        
-    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
-        trainer.datamodule.training_backward = pl_module.training_backward
-
 class PlotGammaScheduleCB(pl.Callback):
     def __init__(self):
         super().__init__()
@@ -73,12 +56,10 @@ class SchrodingerPlot2dCB(pl.Callback):
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardSchrodingerBridge) -> None:
         pl_module.eval()
         device = pl_module.device
-        
-        start_dataset = trainer.datamodule.start_dataset_train
-        end_dataset = trainer.datamodule.end_dataset_train
 
-        x0 = get_batch_from_dataset(start_dataset, self.num_samples).to(device)
-        xT = get_batch_from_dataset(end_dataset, self.num_samples).to(device)
+        train_set = trainer.datamodule.train_set
+        x0, xN = get_batch_from_dataset(train_set, self.num_samples)
+        x0, xN = x0.to(device), xN.to(device)
 
         # first go forward
         trajectory = pl_module.sample(x0, forward = True, return_trajectory=True)
@@ -106,13 +87,13 @@ class SchrodingerPlot2dCB(pl.Callback):
         plt.close(fig)
 
         # then go backward
-        trajectory = pl_module.sample(xT, forward = False, return_trajectory=True)
+        trajectory = pl_module.sample(xN, forward = False, return_trajectory=True)
         trajectory_to_plot = trajectory[traj_idx, :, :]
         min_x, max_x = trajectory[:, :, 0].min(), trajectory[:, :, 0].max()
         min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
 
         fig, ax = plt.subplots(1, 5, figsize=(20, 4))
-        colors = torch.sqrt(xT[:, 0] ** 2 + xT[:, 1] ** 2).tolist()
+        colors = torch.sqrt(xN[:, 0] ** 2 + xN[:, 1] ** 2).tolist()
         for i in range(5):
             x, y = trajectory_to_plot[i, :, 0].cpu(), trajectory_to_plot[i, :, 1].cpu()
             ax[i].scatter(x, y, s = 1, c = colors, cmap = "viridis")

@@ -235,11 +235,13 @@ class StandardSchrodingerBridge(BaseLightningModule):
         return avg_loss
     
     def training_step(self, batch : Tensor, batch_idx : int) -> None:
+        x0, xN = batch
+        
         if self.training_backward:
-            avg_loss = self._train_backward(batch)
+            avg_loss = self._train_backward(x0)
             self.log("backward_loss/train", avg_loss, prog_bar = True)
         else:
-            avg_loss = self._train_forward(batch)
+            avg_loss = self._train_forward(xN)
             self.log("forward_loss/train", avg_loss, prog_bar = True)
 
         self.log("DSB_iteration", self.DSB_iteration, prog_bar = True)

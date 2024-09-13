@@ -1,2 +1,0 @@
-change_dataloader:
-  _target_: src.callbacks.OT_callbacks.SchrodingerChangeDataloaderCB

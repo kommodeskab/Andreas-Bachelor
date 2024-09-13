@@ -15,7 +15,6 @@ class RandomMixDataset(Dataset):
         The samples from the longer dataset are then chosen randomly.
         
         """
-        
         self.long_dataset, self.short_dataset = (dataset1, dataset2) if len(dataset1) > len(dataset2) else (dataset2, dataset1)
         
         self.length = len(self.short_dataset)

@@ -1,7 +1,6 @@
 defaults:
   - learningratemonitor
   - richprogressbar
-  - changedataloader
   - plotgammaschedule
   - modelsummary
   - plotimages

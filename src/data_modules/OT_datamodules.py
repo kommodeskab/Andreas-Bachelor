@@ -4,6 +4,7 @@ import torch.utils
 from torch.utils.data import DataLoader, random_split, Dataset
 from src.dataset.distributions import StandardNormalDataset, Uniform2dDataset, Circle2dDataset
 from src.dataset.mnist import FilteredMNIST
+from src.dataset.datasettypes import RandomMixDataset
 
 class StandardSchrodingerDM(pl.LightningDataModule):
     def __init__(
@@ -17,22 +18,24 @@ class StandardSchrodingerDM(pl.LightningDataModule):
         
         super().__init__()
         self.save_hyperparameters(ignore=["start_dataset", "end_dataset"])
-        self.training_backward : bool = True
                 
         self.start_dataset_train, self.start_dataset_val = random_split(start_dataset, [train_val_split, 1 - train_val_split])
         self.end_dataset_train, self.end_dataset_val = random_split(end_dataset, [train_val_split, 1 - train_val_split])
+        self.train_set = RandomMixDataset(self.start_dataset_train, self.end_dataset_train)
+        self.loader_kwargs = {
+            "batch_size" : batch_size,
+            "num_workers" : num_workers,
+            "persistent_workers" : True
+        }
     
     def train_dataloader(self):
-        if self.training_backward:
-            return DataLoader(self.start_dataset_train, batch_size = self.hparams.batch_size, shuffle = True, num_workers = self.hparams.num_workers, persistent_workers=True)
-        else:
-            return DataLoader(self.end_dataset_train, batch_size = self.hparams.batch_size, shuffle = True, num_workers = self.hparams.num_workers, persistent_workers=True)
+        return DataLoader(self.train_set, shuffle=True, **self.loader_kwargs)
         
     def val_dataloader(self):
         return [
-            DataLoader(self.start_dataset_val, batch_size = self.hparams.batch_size, num_workers = self.hparams.num_workers, persistent_workers=True),
-            DataLoader(self.end_dataset_val, batch_size = self.hparams.batch_size, num_workers = self.hparams.num_workers, persistent_workers=True)
-        ]
+            DataLoader(self.start_dataset_val, shuffle = False, **self.loader_kwargs),
+            DataLoader(self.end_dataset_val, shuffle = False, **self.loader_kwargs)
+            ]
         
 class GaussianSchrodingerDM(StandardSchrodingerDM):
     def __init__(
