@@ -1,3 +1,4 @@
 schrodinger2d_traj:
   _target_: src.callbacks.OT_callbacks.SchrodingerPlot2dCB
-  num_samples: 2000
+  num_points: 2000
+  num_trajectories: 5

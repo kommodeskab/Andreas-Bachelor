@@ -3,10 +3,12 @@ from typing import Tuple, Any, Callable
 from torch import Tensor
 from src.lightning_modules.baselightningmodule import BaseLightningModule
 from torch.optim import Adam, AdamW
+from torch.optim import Optimizer
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn.utils import clip_grad_norm_
+from torch.nn import Module
 
-class StandardSchrodingerBridge(BaseLightningModule):
+class StandardDSB(BaseLightningModule):
     def __init__(
         self,
         forward_model : torch.nn.Module,
@@ -17,6 +19,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
         strict_gammas : bool = True,
         patience: int = 100,
         lr : float = 1e-3,
+        max_norm : float = 0.5,
     ):
         super().__init__()
         self.save_hyperparameters(ignore = ["forward_model", "backward_model"])
@@ -41,6 +44,13 @@ class StandardSchrodingerBridge(BaseLightningModule):
         self.DSB_iteration : int = 0
 
     def has_converged(self) -> bool:
+        """
+        Determines if the model has converged based on the validation losses.
+        Can be overriden to implement custom convergence criteria.
+    
+        Checks if the validation losses have increased for 'patience' epochs.
+        If not, the model has converged.
+        """
         losses, patience = self.val_losses, self.hparams.patience
 
         if len(losses) < patience + 1:
@@ -51,13 +61,14 @@ class StandardSchrodingerBridge(BaseLightningModule):
     
     def on_train_batch_start(self, batch : Tensor, batch_idx : int) -> None:
         """
-        here we check if the model has converged
+        We check if the model has converged before each batch
         if the model has converged we do the following:
         - switch the training direction
         - reset the val_losses
         - reset the learning rate of the optimizer
         - reset the learning rate scheduler
-        we also return -1 to skip the rest of the epoch if converged
+        
+        we also return -1 to skip the rest of the epoch if converged (pytorch lightning behavior)
         
         """
 
@@ -74,83 +85,85 @@ class StandardSchrodingerBridge(BaseLightningModule):
                     pg['lr'] = self.hparams.lr
                     
             # resetting the learning rate scheduler
+            # only works for ReduceLROnPlateau
             for scheduler in self.lr_schedulers():
                 scheduler.num_bad_epochs = 0
             
             return -1
     
     def k_to_tensor(self, k : int, size : Tuple[int]) -> Tensor:
+        """
+        Given k, return a tensor of size 'size' filled with k
+        
+        Args: 
+            k (int) : the current step
+            size (Tuple[int]) : the size of the tensor
+        
+        Returns:
+            Tensor : a tensor of size 'size' filled with k
+        """
         return torch.full((size, ), k, dtype = torch.float32, device = self.device)
     
     @torch.no_grad()
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
-        """
-        Get x_{k + 1} | x_k
+        """        
+        Get :math:`x_{k + 1} | x_{k}`
         
-        Args:
-            xk (Tensor) : the current point
-            k (int) : the current step
-            
-        Returns:
-            Tensor : the next point
+        :param Tensor xk: the current point
+        :param int k: the current step
+        
+        :return xk_plus_one: the next point
         """
         raise NotImplementedError
     
     @torch.no_grad()
     def go_backward(self, xk_plus_one : Tensor, k_plus_one : int) -> Tensor:
         """
-        Get x_{k} | x_{k + 1}
+        Get :math:`x_{k} | x_{k + 1}`
         
-        Args:
-            xk (Tensor) : the current point
-            k (int) : the current step
-            
-        Returns:
-            Tensor : the previous point
+        :param Tensor xk_plus_one: the current point
+        :param int k_plus_one: the current step
+        
+        :return xk: the previous point
         """
         raise NotImplementedError
     
-    def _forward_loss(self, xk : Tensor, k : int, xN : Tensor) -> Tuple[Tensor, Tensor]:
+    def _forward_loss(self, xk_plus_one : Tensor, k_plus_one : int, xN : Tensor) -> Tuple[Tensor, Tensor]:
         """
-        Compute the loss for the forward model
-
-        Args:
-            xk (Tensor) : the current point
-            k (int) : the current step
-            xN (Tensor) : the end point
-            
-        ### Returns:
-        - Tuple[Tensor, Tensor]
-            - the loss
-            - the next point
+        Compute the loss for the forward model.
+        Uses the backward model to 'walk' backwards and optimize the forward model to 'walk' back to the original point
+        
+        :param Tensor xk_plus_one: the current point
+        :param int k_plus_one: the current step
+        :param Tensor xN: the end point
+        
+        :return loss and xk: the loss and the previous point
         """
         raise NotImplementedError
     
     def _backward_loss(self, xk : Tensor, k : int, x0 : Tensor) -> Tuple[Tensor, Tensor]:
         """
-        Compute the loss for the backward model
+        Compute the loss for the backward model.
+        Uses the forward model to 'walk' forward and optimize the backward model to 'walk' back to the original point
         
-        Args:
-            xk (Tensor) : the current point
-            k (int) : the current step
-            x0 (Tensor) : the start point
-            
-        Returns:
-            Tuple[Tensor, Tensor] : the loss and the previous point
+        :param Tensor xk: the current point
+        :param int k: the current step
+        :param Tensor x0: the start point
+        
+        :return loss and xk_plus_one: the loss and the next point
         """
         raise NotImplementedError
     
     def sample(self, x_start : Tensor, forward : bool = True, return_trajectory : bool = False) -> Tensor:
         """
-        Sample from the forward or backward model starting from x_start
+        Given the start point x_start, sample the final point xN / x0 by going forward / backward
+        Also, return the trajectory if return_trajectory is True
         
-        Args:
-            x_start (Tensor) : the starting point
-            forward (bool) : whether to sample from the forward model
-            return_trajectory (bool) : whether to return the trajectory. The trajectory is a tensor of shape (num_steps, *x_start.size())
-            
-        Returns:
-            Tensor : the sampled point
+        :param Tensor x_start: the start point
+        :param bool forward: whether to go forward or backward
+        :param bool return_trajectory: whether to return the trajectory
+        
+        :return Tensor: the final point xN / x0 or the trajectory
         """
         
         trajectory = torch.zeros(self.hparams.num_steps + 1, *x_start.size())
@@ -173,16 +186,29 @@ class StandardSchrodingerBridge(BaseLightningModule):
             
         return trajectory if return_trajectory else xk
     
+    def _optimize(self, loss : Tensor, optimizer : Optimizer, model : Module) -> None:
+        """
+        Given the loss, optimizer and model, optimize the model
+        
+        :param Tensor loss: the loss
+        :param Optimizer optimizer: the optimizer
+        :param Module model: the model
+        """
+        optimizer.zero_grad()
+        self.manual_backward(loss)
+        clip_grad_norm_(model.parameters(), self.hparams.max_norm)
+        optimizer.step()
+    
     def _train_backward(self, x0 : Tensor, validating : bool = False) -> float:
         """
         Given the start point x0, train the backward model
         
-        Args:
-            x0 (Tensor) : the start point
-            
-        Returns:
-            losses (dict) : the average backward and forward losses
+        :param Tensor x0: the start point
+        :param bool validating: whether to validate
+        
+        :return float: the average loss
         """
+        
         backward_opt, _ = self.optimizers()
         batch_losses = torch.zeros(self.hparams.num_steps)
         xk = x0.clone()
@@ -191,10 +217,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
             loss, xk_plus_one = self._backward_loss(xk, k, x0)
             
             if not validating:
-                backward_opt.zero_grad()
-                self.manual_backward(loss)
-                clip_grad_norm_(self.backward_model.parameters(), 1)
-                backward_opt.step()
+                self._optimize(loss, backward_opt, self.backward_model)
                 
             xk = xk_plus_one
             batch_losses[i] = loss.item()
@@ -206,13 +229,12 @@ class StandardSchrodingerBridge(BaseLightningModule):
     def _train_forward(self, xN : Tensor, validating : bool = False) -> float:
         """
         Given the end point xN, train the forward model
-
-        Args:
-            xN (Tensor) : the end point
-
-        Returns:
-            losses (dict) : the average backward and forward losses
-
+        
+        :param Tensor xN: the end point
+        :param bool validating: whether to validate
+        
+        :return float: the average loss
+        
         """
         _, forward_opt = self.optimizers()
         batch_losses = torch.zeros(self.hparams.num_steps)
@@ -222,10 +244,7 @@ class StandardSchrodingerBridge(BaseLightningModule):
             loss, xk = self._forward_loss(xk_plus_one, k + 1, xN)
             
             if not validating:
-                forward_opt.zero_grad()
-                self.manual_backward(loss)
-                clip_grad_norm_(self.forward_model.parameters(), 1)
-                forward_opt.step()
+                self._optimize(loss, forward_opt, self.forward_model)
                 
             xk_plus_one = xk
             batch_losses[i] = loss.item()
@@ -257,12 +276,15 @@ class StandardSchrodingerBridge(BaseLightningModule):
             self.log("forward_loss/val", avg_loss, prog_bar = True, add_dataloader_idx=False)
 
     def on_validation_epoch_end(self) -> None:
+        # after validation we want to update the learning rate
         backward_scheduler, forward_scheduler = self.lr_schedulers()
         metrics = self.trainer.callback_metrics
 
+        # if no losses were computed, return
         if len(metrics) == 0:
             return
         
+        # take a step based on the validation loss
         if self.training_backward:
             val_loss = metrics["backward_loss/val"].item()
             backward_scheduler.step(val_loss)
@@ -278,22 +300,13 @@ class StandardSchrodingerBridge(BaseLightningModule):
         
         # convergence will happen after 'patience' validation steps with no improvement
         # therefore reduce the lr after 'patience // 2' validation steps with no improvement
-        lr_args = {
-            'patience': self.hparams.patience // 2,
-            'factor': 0.5,
-        }
-        backward_scheduler = {
-            'scheduler': ReduceLROnPlateau(backward_opt, **lr_args),
-            'name': 'lr_scheduler_backward',
-        }
-        forward_scheduler = {
-            'scheduler': ReduceLROnPlateau(forward_opt, **lr_args),
-            'name': 'lr_scheduler_forward',
-        }
+        lr_args = {'patience': self.hparams.patience // 2, 'factor': 0.5}
+        backward_scheduler = {'scheduler': ReduceLROnPlateau(backward_opt, **lr_args), 'name': 'lr_scheduler_backward'}
+        forward_scheduler = {'scheduler': ReduceLROnPlateau(forward_opt, **lr_args), 'name': 'lr_scheduler_forward'}
         
         return [backward_opt, forward_opt], [backward_scheduler, forward_scheduler]
         
-class ClassicSchrodingerBridge(StandardSchrodingerBridge):
+class SimplifiedDSB(StandardDSB):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
     
@@ -327,99 +340,9 @@ class ClassicSchrodingerBridge(StandardSchrodingerBridge):
         
         return loss, xk_plus_one
     
-class BaseSimplifiedSchrodingerBridge(StandardSchrodingerBridge):
+class BaseReparameterizedDSB(StandardDSB):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.gammas_bar = torch.cumsum(self.gammas, 0)
         self.sigma_backward = 2 * self.gammas[1:] * self.gammas_bar[:-1] / self.gammas_bar[1:]
         self.sigma_forward = 2 * self.gammas[1:] * (1 - self.gammas_bar[1:]) / (1 - self.gammas_bar[:-1])
-    
-class TRSchrodingerBridge(BaseSimplifiedSchrodingerBridge):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        
-    @torch.no_grad()
-    def go_forward(self, xk : Tensor, k : int) -> Tensor:
-        batch_size = xk.size(0)
-        ks = self.k_to_tensor(k, batch_size)
-        xN = self.forward_model(xk, ks)
-        mu = xk + self.gammas[k + 1] / (1 - self.gammas_bar[k]) * (xN - xk)
-        sigma = self.sigma_forward[k]
-        xk_plus_one = mu + sigma * torch.randn_like(xk)
-        
-        return xk_plus_one
-    
-    @torch.no_grad()
-    def go_backward(self, xk_plus_one : Tensor, k_plus_one : int) -> Tensor:
-        batch_size = xk_plus_one.size(0)
-        ks_plus_one = self.k_to_tensor(k_plus_one, batch_size)
-        x0 = self.backward_model(xk_plus_one, ks_plus_one)
-        mu = xk_plus_one + self.gammas[k_plus_one] / self.gammas_bar[k_plus_one] * (x0 - xk_plus_one)
-        sigma = self.sigma_backward[k_plus_one - 1]
-        xk = mu + sigma * torch.randn_like(xk_plus_one)
-        
-        return xk
-    
-    def _backward_loss(self, xk : Tensor, k : int, x0 : Tensor) -> Tuple[Tensor, Tensor]:
-        batch_size = xk.size(0)
-        xk_plus_one = self.go_forward(xk, k)
-        ks_plus_one = self.k_to_tensor(k + 1, batch_size)
-        x0_pred = self.backward_model(xk_plus_one, ks_plus_one)
-        loss = self.mse(x0_pred, x0)
-        
-        return loss, xk_plus_one
-    
-    def _forward_loss(self, xk_plus_one : Tensor, k_plus_one : int, xN : Tensor) -> Tuple[Tensor, Tensor]:
-        batch_size = xk_plus_one.size(0)
-        xk = self.go_backward(xk_plus_one, k_plus_one)
-        ks = self.k_to_tensor(k_plus_one - 1, batch_size)
-        xN_pred = self.forward_model(xk, ks)
-        loss = self.mse(xN_pred, xN)
-        
-        return loss, xk
-        
-class FRSchrodingerBridge(BaseSimplifiedSchrodingerBridge):
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        
-    @torch.no_grad()
-    def go_forward(self, xk : Tensor, k : int) -> Tensor:
-        batch_size = xk.size(0)
-        ks = self.k_to_tensor(k, batch_size)
-        f = self.forward_model(xk, ks)
-        mu = xk + self.gammas[k + 1] * f
-        sigma = self.sigma_forward[k]
-        xk_plus_one = mu + sigma * torch.randn_like(xk)
-        
-        return xk_plus_one
-    
-    @torch.no_grad()
-    def go_backward(self, xk_plus_one : Tensor, k_plus_one : int) -> Tensor:
-        batch_size = xk_plus_one.size(0)
-        ks_plus_one = self.k_to_tensor(k_plus_one, batch_size)
-        b = self.backward_model(xk_plus_one, ks_plus_one)
-        mu = xk_plus_one + self.gammas[k_plus_one] * b
-        sigma = self.sigma_backward[k_plus_one - 1]
-        xk = mu + sigma * torch.randn_like(xk_plus_one)
-        
-        return xk
-    
-    def _backward_loss(self, xk : Tensor, k : int, x0 : Tensor) -> Tuple[Tensor, Tensor]:
-        batch_size = xk.size(0)
-        xk_plus_one = self.go_forward(xk, k)
-        target = (x0 - xk_plus_one) / self.gammas_bar[k + 1]
-        ks_plus_one = self.k_to_tensor(k + 1, batch_size)
-        pred = self.backward_model(xk_plus_one, ks_plus_one)
-        loss = self.mse(pred, target)
-        
-        return loss, xk_plus_one
-    
-    def _forward_loss(self, xk_plus_one : Tensor, k_plus_one : int, xN : Tensor) -> Tuple[Tensor, Tensor]:
-        batch_size = xk_plus_one.size(0)
-        xk = self.go_backward(xk_plus_one, k_plus_one)
-        target = (xN - xk) / (1 - self.gammas_bar[k_plus_one - 1])
-        ks = self.k_to_tensor(k_plus_one - 1, batch_size)
-        pred = self.forward_model(xk, ks)
-        loss = self.mse(pred, target)
-        
-        return loss, xk

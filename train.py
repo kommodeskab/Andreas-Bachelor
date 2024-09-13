@@ -25,10 +25,11 @@ def my_app(cfg : DictConfig) -> None:
     
     datamodule = hydra.utils.instantiate(cfg.data)
     model = hydra.utils.instantiate(cfg.model)
-    task.upload_artifact("hyperparameters", yaml.dump(model.hparams))
+    
+    hparams = dict(model.hparams)
+    task.upload_artifact("hyperparameters", yaml.dump(hparams))
     
     logger = TensorBoardLogger("logs", name = cfg.project_name, version = task.id, default_hp_metric = False)
-    logger.log_hyperparams(model.hparams)
     
     callbacks = instantiate_callbacks(cfg.get("callbacks", None))
     

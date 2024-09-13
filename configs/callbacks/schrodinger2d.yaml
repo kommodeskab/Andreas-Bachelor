@@ -3,4 +3,4 @@ defaults:
   - richprogressbar
   - schrodinger2d_traj
   - plotgammaschedule
-  - modelsummary
+  - richmodelsummary

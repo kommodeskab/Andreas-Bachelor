@@ -2,5 +2,5 @@ defaults:
   - learningratemonitor
   - richprogressbar
   - plotgammaschedule
-  - modelsummary
+  - richmodelsummary
   - plotimages

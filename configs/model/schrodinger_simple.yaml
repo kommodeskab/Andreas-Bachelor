@@ -1,4 +1,4 @@
-_target_: src.lightning_modules.schrodinger_bridge.FRSchrodingerBridge
+_target_: src.lightning_modules.reparameterized_dsb.FRDSB
 
 forward_model:
   _target_: src.networks.simple_models.SimpleNetwork
@@ -16,7 +16,7 @@ backward_model:
   decoder_layers: [128, 128, 128]
   time_encoding_size: 16
 
-patience: 20
+patience: 6
 max_gamma: 0.01
 min_gamma: 0.01
 num_steps: 100
