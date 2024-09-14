@@ -263,7 +263,10 @@ class StandardDSB(BaseLightningModule):
             avg_loss = self._train_forward(xN)
             self.log("forward_loss/train", avg_loss, prog_bar = True)
 
-        self.log("DSB_iteration", self.DSB_iteration, prog_bar = True)
+        self.log_dict({
+            "DSB_iteration": self.DSB_iteration,
+            "training_backward": self.training_backward
+        }, prog_bar = True)
     
     @torch.no_grad()
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> None:        

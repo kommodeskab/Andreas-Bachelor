@@ -25,7 +25,8 @@ class StandardSchrodingerDM(pl.LightningDataModule):
         self.loader_kwargs = {
             "batch_size" : batch_size,
             "num_workers" : num_workers,
-            "persistent_workers" : True
+            "persistent_workers" : True,
+            "drop_last" : True,
         }
     
     def train_dataloader(self):
