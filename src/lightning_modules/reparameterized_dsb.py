@@ -11,8 +11,8 @@ class TRDSB(BaseReparameterizedDSB):
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
         batch_size = xk.size(0)
         ks = self.k_to_tensor(k, batch_size)
-        xN = self.forward_model(xk, ks)
-        mu = xk + self.gammas[k + 1] / (1 - self.gammas_bar[k]) * (xN - xk)
+        xN_pred = self.forward_model(xk, ks)
+        mu = xk + self.gammas[k + 1] / (1 - self.gammas_bar[k]) * (xN_pred - xk)
         sigma = self.sigma_forward[k]
         xk_plus_one = mu + sigma * torch.randn_like(xk)
         
@@ -22,8 +22,8 @@ class TRDSB(BaseReparameterizedDSB):
     def go_backward(self, xk_plus_one : Tensor, k_plus_one : int) -> Tensor:
         batch_size = xk_plus_one.size(0)
         ks_plus_one = self.k_to_tensor(k_plus_one, batch_size)
-        x0 = self.backward_model(xk_plus_one, ks_plus_one)
-        mu = xk_plus_one + self.gammas[k_plus_one] / self.gammas_bar[k_plus_one] * (x0 - xk_plus_one)
+        x0_pred = self.backward_model(xk_plus_one, ks_plus_one)
+        mu = xk_plus_one + self.gammas[k_plus_one] / self.gammas_bar[k_plus_one] * (x0_pred - xk_plus_one)
         sigma = self.sigma_backward[k_plus_one - 1]
         xk = mu + sigma * torch.randn_like(xk_plus_one)
         

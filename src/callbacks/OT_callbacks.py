@@ -4,6 +4,7 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib
 from src.lightning_modules.schrodinger_bridge import StandardDSB
+from src.lightning_modules.reparameterized_dsb import TRDSB
 from src.callbacks.utils import get_batch_from_dataset
 import random
 
@@ -133,8 +134,8 @@ class SchrodingerPlotImagesCB(pl.Callback):
         trainer.logger.experiment.add_figure("Forward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
         
-        xT = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
-        trajectory = pl_module.sample(xT, forward = False, return_trajectory = True)
+        xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
+        trajectory = pl_module.sample(xN, forward = False, return_trajectory = True)
 
         fig, ax = plt.subplots(5, 5, figsize=(20, 20))
         for i in range(5):
@@ -148,7 +149,63 @@ class SchrodingerPlotImagesCB(pl.Callback):
         fig.suptitle(f"Backward trajectory (DSB-iteration: {pl_module.DSB_iteration})", fontsize = 40)
         trainer.logger.experiment.add_figure("Backward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
-
+        
+class DebugImagesCB(pl.Callback):
+    def __init__(self):
+        super().__init__()
+        
+    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
+        x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 1)
+        xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 1)
+        
+        if isinstance(pl_module, TRDSB):
+            forward_trajectory = pl_module.sample(x0, forward = True, return_trajectory = True)
+            backward_trajectory = pl_module.sample(xN, forward = False, return_trajectory = True)
+            
+            traj_len = forward_trajectory.shape[0]
+            traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
+            
+            forward_trajectory = forward_trajectory[traj_idx, :, :, :, :]
+            backward_trajectory = backward_trajectory[traj_idx, :, :, :, :]
+            
+            fig, ax = plt.subplots(5, 2, figsize=(20, 8))
+            for i in range(5):
+                xk = forward_trajectory[i, 0, :, :, :]
+                k = traj_idx[i]
+                ks = pl_module.k_to_tensor(k, 1)
+                x0_pred = pl_module.backward_model(xk, ks)
+                
+                ax[i, 0].imshow(xk.squeeze().cpu().permute(1, 2, 0))
+                ax[i, 0].axis("off")
+                ax[i, 0].set_title(f"Forward step {k}")
+                
+                ax[i, 1].imshow(x0_pred.squeeze().cpu().permute(1, 2, 0))
+                ax[i, 1].axis("off")
+                ax[i, 1].set_title(f"$x_0$ prediction")
+                
+            fig.suptitle("Forward trajectory", fontsize = 20)
+            trainer.logger.experiment.add_figure("debug/Forward trajectory", fig, global_step=trainer.global_step)
+            plt.close(fig)
+            
+            fig, ax = plt.subplots(5, 2, figsize=(20, 8))
+            for i in range(5):
+                xk = backward_trajectory[i, 0, :, :, :]
+                k = traj_idx[i]
+                ks = pl_module.k_to_tensor(k, 1)
+                xN_pred = pl_module.forward_model(xk, ks)
+                
+                ax[i, 0].imshow(xk.squeeze().cpu().permute(1, 2, 0))
+                ax[i, 0].axis("off")
+                ax[i, 0].set_title(f"Backward step {k}")
+                
+                ax[i, 1].imshow(xN_pred.squeeze().cpu().permute(1, 2, 0))
+                ax[i, 1].axis("off")
+                ax[i, 1].set_title(f"$x_N$ prediction")
+                
+            fig.suptitle("Backward trajectory", fontsize = 20)
+            trainer.logger.experiment.add_figure("debug/Backward trajectory", fig, global_step=trainer.global_step)
+            plt.close(fig)
+                
 class GaussianTestCB(pl.Callback):
     def __init__(
             self,
@@ -165,11 +222,11 @@ class GaussianTestCB(pl.Callback):
         current_dsb_iteration = pl_module.DSB_iteration
 
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_samples).to(pl_module.device)
-        xT_pred = pl_module.sample(x0, forward = True)
-        xT_pred_mu, xT_pred_sigma = xT_pred.mean(dim = 0), xT_pred.std(dim = 0)
-        xT_real_mu, xT_real_sigma = trainer.datamodule.end_mu.to(pl_module.device), trainer.datamodule.end_sigma.to(pl_module.device)
-        mu_error = torch.norm(xT_pred_mu - xT_real_mu).item()
-        sigma_error = torch.norm(xT_pred_sigma - xT_real_sigma).item()
+        xN_pred = pl_module.sample(x0, forward = True)
+        xN_pred_mu, xN_pred_sigma = xN_pred.mean(dim = 0), xN_pred.std(dim = 0)
+        xN_real_mu, xN_real_sigma = trainer.datamodule.end_mu.to(pl_module.device), trainer.datamodule.end_sigma.to(pl_module.device)
+        mu_error = torch.norm(xN_pred_mu - xN_real_mu).item()
+        sigma_error = torch.norm(xN_pred_sigma - xN_real_sigma).item()
         
         pl_module.gaussian_test_results[current_dsb_iteration] = {
             "mu_error": mu_error,
@@ -201,17 +258,17 @@ class SchrodingerAudioCB(pl.Callback):
         sample_rate = trainer.datamodule.sample_rate
 
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
-        xT_pred = pl_module.sample(x0, forward = True)
+        xN_pred = pl_module.sample(x0, forward = True)
 
         for i in range(5):
-            start_audio, end_audio = x0[i, :, :].cpu(), xT_pred[i, :, :].cpu()
+            start_audio, end_audio = x0[i, :, :].cpu(), xN_pred[i, :, :].cpu()
             concat_audio = torch.concatenate([start_audio, end_audio], dim = 0)
             trainer.logger.experiment.add_audio(f"Forward_sampling_{i}", concat_audio, global_step=trainer.global_step, sample_rate=sample_rate)
 
-        xT = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
-        x0_pred = pl_module.sample(xT, forward = False)
+        xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
+        x0_pred = pl_module.sample(xN, forward = False)
 
         for i in range(5):
-            start_audio, end_audio = xT[i, :, :].cpu(), x0_pred[i, :, :].cpu()
+            start_audio, end_audio = xN[i, :, :].cpu(), x0_pred[i, :, :].cpu()
             concat_audio = torch.concatenate([start_audio, end_audio], dim = 0)
             trainer.logger.experiment.add_audio(f"Backward_sampling_{i}", concat_audio, global_step=trainer.global_step, sample_rate=sample_rate)
