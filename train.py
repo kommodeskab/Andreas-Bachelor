@@ -25,6 +25,9 @@ def my_app(cfg : DictConfig) -> None:
     
     datamodule = hydra.utils.instantiate(cfg.data)
     model = hydra.utils.instantiate(cfg.model)
+
+    if cfg.compile:
+        torch.compile(model)
     
     hparams = dict(model.hparams)
     task.upload_artifact("hyperparameters", yaml.dump(hparams))

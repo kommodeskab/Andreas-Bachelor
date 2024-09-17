@@ -3,6 +3,7 @@ project_name: ???
 task_name: ???
 experiment_id: False
 seed: 42
+compile: True
 
 defaults:
   - trainer: ???
