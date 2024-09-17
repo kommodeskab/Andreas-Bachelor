@@ -1,6 +1,18 @@
 from torch.utils.data import Dataset
 from torchvision import datasets, transforms
 
+class MNIST(Dataset):
+    def __init__(self):
+        transform = transforms.Compose([transforms.ToTensor(), transforms.Resize((32, 32))])
+        self.mnist_dataset = datasets.MNIST(root="data", transform=transform, download=True)
+        
+    def __len__(self):
+        return len(self.mnist_dataset)
+    
+    def __getitem__(self, idx):
+        image, _ = self.mnist_dataset[idx]
+        return image
+
 class FilteredMNIST(Dataset):
     def __init__(
         self, 
@@ -22,8 +34,6 @@ class FilteredMNIST(Dataset):
         return image
     
 if __name__ == "__main__":
-    dataset = FilteredMNIST(digit=3, download = True)
-    image = dataset[0]
+    dataset = MNIST()
     print(len(dataset))
-    print(image)
-    print(image.shape)
+    print(dataset[0].shape)
