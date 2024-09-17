@@ -5,3 +5,4 @@ reload_dataloaders_every_n_epochs: 1
 val_check_interval: 0.25
 fast_dev_run: False
 profiler: 'simple'
+precision: '16-mixed'
