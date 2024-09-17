@@ -21,7 +21,10 @@ class StandardSchrodingerDM(pl.LightningDataModule):
                 
         self.start_dataset_train, self.start_dataset_val = random_split(start_dataset, [train_val_split, 1 - train_val_split])
         self.end_dataset_train, self.end_dataset_val = random_split(end_dataset, [train_val_split, 1 - train_val_split])
+        
         self.train_set = RandomMixDataset(self.start_dataset_train, self.end_dataset_train)
+        self.val_set = RandomMixDataset(self.start_dataset_val, self.end_dataset_val)
+        
         self.loader_kwargs = {
             "batch_size" : batch_size,
             "num_workers" : num_workers,
@@ -33,10 +36,7 @@ class StandardSchrodingerDM(pl.LightningDataModule):
         return DataLoader(self.train_set, shuffle=True, **self.loader_kwargs)
         
     def val_dataloader(self):
-        return [
-            DataLoader(self.start_dataset_val, shuffle = False, **self.loader_kwargs),
-            DataLoader(self.end_dataset_val, shuffle = False, **self.loader_kwargs)
-            ]
+        return DataLoader(self.val_set, shuffle=False, **self.loader_kwargs)
         
 class GaussianSchrodingerDM(StandardSchrodingerDM):
     def __init__(

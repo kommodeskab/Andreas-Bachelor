@@ -114,6 +114,7 @@ class SchrodingerPlotImagesCB(pl.Callback):
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         device = pl_module.device
+        iteration = pl_module.DSB_iteration
 
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
         trajectory = pl_module.sample(x0, forward = True, return_trajectory = True)
@@ -130,8 +131,8 @@ class SchrodingerPlotImagesCB(pl.Callback):
                 if j == 2:
                     ax[i, j].set_title(f"Step {traj_idx[i]}", fontsize = 20)
 
-        fig.suptitle(f"Forward trajectory (DSB-iteration: {pl_module.DSB_iteration})", fontsize = 40)
-        trainer.logger.experiment.add_figure("Forward trajectory", fig, global_step=trainer.global_step)
+        fig.suptitle(f"Forward trajectory (DSB-iteration: {iteration})", fontsize = 40)
+        trainer.logger.experiment.add_figure(f"iteration_{iteration}/Forward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
         
         xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
@@ -146,8 +147,8 @@ class SchrodingerPlotImagesCB(pl.Callback):
                 if j == 2:
                     ax[i, j].set_title(f"Step {traj_idx[i]}", fontsize = 20)
 
-        fig.suptitle(f"Backward trajectory (DSB-iteration: {pl_module.DSB_iteration})", fontsize = 40)
-        trainer.logger.experiment.add_figure("Backward trajectory", fig, global_step=trainer.global_step)
+        fig.suptitle(f"Backward trajectory (DSB-iteration: {iteration})", fontsize = 40)
+        trainer.logger.experiment.add_figure(f"iteration_{iteration}/Backward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
         
 class DebugImagesCB(pl.Callback):
@@ -173,7 +174,7 @@ class DebugImagesCB(pl.Callback):
                 xk = forward_trajectory[i, 0, :, :, :]
                 k = traj_idx[i]
                 ks = pl_module.k_to_tensor(k, 1)
-                x0_pred = pl_module.backward_model(xk, ks)
+                x0_pred = pl_module.backward_call(xk, ks)
                 
                 ax[i, 0].imshow(xk.squeeze().cpu().permute(1, 2, 0))
                 ax[i, 0].axis("off")
@@ -192,7 +193,7 @@ class DebugImagesCB(pl.Callback):
                 xk = backward_trajectory[i, 0, :, :, :]
                 k = traj_idx[i]
                 ks = pl_module.k_to_tensor(k, 1)
-                xN_pred = pl_module.forward_model(xk, ks)
+                xN_pred = pl_module.forward_call(xk, ks)
                 
                 ax[i, 0].imshow(xk.squeeze().cpu().permute(1, 2, 0))
                 ax[i, 0].axis("off")

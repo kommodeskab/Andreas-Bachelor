@@ -1,0 +1,9 @@
+# @package _global_
+defaults:
+  - override /trainer: gpu
+  - override /data: fun2d
+  - override /callbacks: schrodinger2d
+  - override /model: trdsb_hack_simple
+
+project_name: 'Bachelor'
+task_name: 'schrodinger_2d'

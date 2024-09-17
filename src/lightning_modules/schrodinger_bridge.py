@@ -27,9 +27,10 @@ class StandardDSB(BaseLightningModule):
         self.training_backward : bool = True
 
         assert max_gamma >= min_gamma, f"{max_gamma = } must be greater than {min_gamma = }"
-        gammas = torch.linspace(min_gamma, 2 * max_gamma - min_gamma, num_steps)
-        gammas[-(num_steps // 2) :] = reversed(gammas[: num_steps // 2])
-        gammas = torch.cat([torch.tensor([0]), gammas]) # the first gamma is 0. This gamma is never used, since indexing starts at 1
+        first_steps = num_steps // 2
+        gammas = torch.zeros(num_steps + 1)
+        gammas[1:first_steps + 1] = torch.linspace(min_gamma, max_gamma, first_steps)
+        gammas[first_steps + 1:] = torch.linspace(max_gamma, min_gamma, num_steps - first_steps)
         self.gammas = gammas
         
         if strict_gammas:
@@ -103,6 +104,18 @@ class StandardDSB(BaseLightningModule):
             Tensor : a tensor of size 'size' filled with k
         """
         return torch.full((size, ), k, dtype = torch.float32, device = self.device)
+    
+    def forward_call(self, x : Tensor, k: Tensor):
+        """
+        Calls the forward model
+        """
+        return self.forward_model(x, k)
+    
+    def backward_call(self, x : Tensor, k : Tensor):
+        """
+        Calls the backward model
+        """
+        return self.backward_model(x, k)
     
     @torch.no_grad()
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
@@ -254,13 +267,11 @@ class StandardDSB(BaseLightningModule):
         return avg_loss
     
     def training_step(self, batch : Tensor, batch_idx : int) -> None:
-        x0, xN = batch
-        
         if self.training_backward:
-            avg_loss = self._train_backward(x0)
+            avg_loss = self._train_backward(batch["x0"])
             self.log("backward_loss/train", avg_loss, prog_bar = True)
         else:
-            avg_loss = self._train_forward(xN)
+            avg_loss = self._train_forward(batch["xN"])
             self.log("forward_loss/train", avg_loss, prog_bar = True)
 
         self.log_dict({
@@ -269,15 +280,14 @@ class StandardDSB(BaseLightningModule):
         }, prog_bar = True)
     
     @torch.no_grad()
-    def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> None:        
-        if dataloader_idx == 0 and self.training_backward:
-            avg_loss = self._train_backward(batch, validating = True)
-            self.log("backward_loss/val", avg_loss, prog_bar = True, add_dataloader_idx=False)
-
-        elif dataloader_idx == 1 and not self.training_backward:
-            avg_loss = self._train_forward(batch, validating = True)
-            self.log("forward_loss/val", avg_loss, prog_bar = True, add_dataloader_idx=False)
-
+    def validation_step(self, batch : Tensor, batch_idx : int) -> None:
+        if self.training_backward:
+            avg_loss = self._train_backward(batch["x0"], validating = True)
+            self.log("backward_loss/val", avg_loss, prog_bar = True)
+        else:
+            avg_loss = self._train_forward(batch["xN"], validating = True)
+            self.log("forward_loss/val", avg_loss, prog_bar = True)
+            
     def on_validation_epoch_end(self) -> None:
         # after validation we want to update the learning rate
         backward_scheduler, forward_scheduler = self.lr_schedulers()
@@ -316,21 +326,21 @@ class SimplifiedDSB(StandardDSB):
     @torch.no_grad()
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
         ks = self.k_to_tensor(k, xk.size(0))
-        xk_plus_one = self.forward_model(xk, ks) + torch.sqrt(2 * self.gammas[k + 1]) * torch.randn_like(xk)
+        xk_plus_one = self.forward_call(xk, ks) + torch.sqrt(2 * self.gammas[k + 1]) * torch.randn_like(xk)
         
         return xk_plus_one
     
     @torch.no_grad()
     def go_backward(self, xk_plus_one : Tensor, k_plus_one : int) -> Tensor:
         ks_plus_one = self.k_to_tensor(k_plus_one, xk_plus_one.size(0))
-        xk = self.backward_model(xk_plus_one, ks_plus_one) + torch.sqrt(2 * self.gammas[k_plus_one]) * torch.randn_like(xk_plus_one)
+        xk = self.backward_call(xk_plus_one, ks_plus_one) + torch.sqrt(2 * self.gammas[k_plus_one]) * torch.randn_like(xk_plus_one)
         
         return xk
     
     def _forward_loss(self, xk_plus_one : Tensor, k_plus_one : int, xN : Tensor) -> Tuple[Tensor, Tensor]:
         xk = self.go_backward(xk_plus_one, k_plus_one)
         ks = self.k_to_tensor(k_plus_one - 1, xk_plus_one.size(0))
-        xk_plus_one_prime = self.forward_model(xk, ks)
+        xk_plus_one_prime = self.forward_call(xk, ks)
         loss = self.mse(xk_plus_one_prime, xk_plus_one)
         
         return loss, xk
@@ -338,7 +348,7 @@ class SimplifiedDSB(StandardDSB):
     def _backward_loss(self, xk : Tensor, k : int, x0 : Tensor) -> Tuple[Tensor, Tensor]:
         xk_plus_one = self.go_forward(xk, k)
         ks_plus_one = self.k_to_tensor(k, xk.size(0))
-        xk_prime = self.backward_model(xk_plus_one, ks_plus_one)
+        xk_prime = self.backward_call(xk_plus_one, ks_plus_one)
         loss = self.mse(xk_prime, xk)
         
         return loss, xk_plus_one
