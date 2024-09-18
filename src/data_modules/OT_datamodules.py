@@ -4,7 +4,7 @@ import torch.utils
 from torch.utils.data import DataLoader, random_split, Dataset
 from src.dataset.distributions import StandardNormalDataset, Uniform2dDataset, Circle2dDataset
 from src.dataset.mnist import FilteredMNIST
-from src.dataset.datasettypes import RandomMixDataset
+from src.dataset.datasettypes import OTMixDataset
 
 class StandardSchrodingerDM(pl.LightningDataModule):
     def __init__(
@@ -22,8 +22,8 @@ class StandardSchrodingerDM(pl.LightningDataModule):
         self.start_dataset_train, self.start_dataset_val = random_split(start_dataset, [train_val_split, 1 - train_val_split])
         self.end_dataset_train, self.end_dataset_val = random_split(end_dataset, [train_val_split, 1 - train_val_split])
         
-        self.train_set = RandomMixDataset(self.start_dataset_train, self.end_dataset_train)
-        self.val_set = RandomMixDataset(self.start_dataset_val, self.end_dataset_val)
+        self.train_set = OTMixDataset(self.start_dataset_train, self.end_dataset_train, random=True)
+        self.val_set = OTMixDataset(self.start_dataset_val, self.end_dataset_val, random=False)
         
         self.loader_kwargs = {
             "batch_size" : batch_size,
