@@ -2,14 +2,14 @@ import os
 import hydra
 from omegaconf import DictConfig
 
-def get_project_name_from_id(experiment_id : str) -> str:
+def get_project_name_from_id(experiment_id : str) -> str | None:
     for dirpath, dirnames, _ in os.walk("logs"):
         if experiment_id in dirnames:
             return os.path.basename(dirpath)
         
-    raise ValueError(f"Experiment {experiment_id} not found")
+    raise ValueError(f"Experiment {experiment_id} not found. Maybe it is on a different machine?")
 
-def get_ckpt_path(experiment_id):
+def get_ckpt_path(experiment_id : str) -> str | None:
     if experiment_id is False:
         return None
     

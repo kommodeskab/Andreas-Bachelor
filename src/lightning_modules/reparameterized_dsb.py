@@ -67,6 +67,8 @@ class TRDSBWithHack(TRDSB):
         return super().validation_step(batch, batch_idx)
     
     def forward_call(self, x: Tensor, k: Tensor):
+        # in the first iteration when training the backward model
+        # dont use a randomly initialized model but instead output the some random xN
         if self.training_backward and self.DSB_iteration == 0 and self.hack_permitted:
             return self.last_batch["xN"]
         
