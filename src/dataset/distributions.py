@@ -17,14 +17,14 @@ class StandardNormalDataset(Dataset):
     
     def __getitem__(self, index):
         return self.values[index]
-    
+
 class Uniform2dDataset(Dataset):
     def __init__(self, size = 1000):
         self.size = size
         self.values = torch.rand(size, 2)
         # center the data around 0
         self.values = self.values * 2 - 1
-        
+    
     def __len__(self):
         return self.size
     

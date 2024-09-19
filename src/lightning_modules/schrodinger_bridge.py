@@ -13,14 +13,30 @@ class StandardDSB(BaseLightningModule):
         self,
         forward_model : torch.nn.Module,
         backward_model : torch.nn.Module,
-        max_gamma : float = None,
-        min_gamma : float = None,
-        num_steps : int = None,
+        max_gamma : float,
+        min_gamma : float,
+        num_steps : int,
+        patience: int,
+        max_evals: int | None = None,
         strict_gammas : bool = True,
-        patience: int = 100,
         lr : float = 1e-3,
         max_norm : float = 0.5,
     ):
+        """
+        Initializes the StandardDSB model
+
+        Args:
+            forward_model (torch.nn.Module): the forward model
+            backward_model (torch.nn.Module): the backward model
+            max_gamma (float): the maximum gamma
+            min_gamma (float): the minimum gamma
+            num_steps (int): the number of steps
+            patience (int): the patience
+            max_batches (int): the maximum number of batches
+            strict_gammas (bool): whether to enforce the sum of gammas to be equal to 1
+            lr (float): the learning rate
+            max_norm (float): the maximum norm for clipping the gradients
+        """
         super().__init__()
         self.save_hyperparameters(ignore = ["forward_model", "backward_model"])
         self.automatic_optimization : bool = False
@@ -52,7 +68,11 @@ class StandardDSB(BaseLightningModule):
         Checks if the validation losses have increased for 'patience' epochs.
         If not, the model has converged.
         """
-        losses, patience = self.val_losses, self.hparams.patience
+        losses, patience, max_evals = self.val_losses, self.hparams.patience, self.hparams.max_evals
+
+        if max_evals is not None:
+            if len(losses) >= max_evals:
+                return True
 
         if len(losses) < patience + 1:
             return False
@@ -95,13 +115,11 @@ class StandardDSB(BaseLightningModule):
     def k_to_tensor(self, k : int, size : Tuple[int]) -> Tensor:
         """
         Given k, return a tensor of size 'size' filled with k
-        
-        Args: 
-            k (int) : the current step
-            size (Tuple[int]) : the size of the tensor
-        
-        Returns:
-            Tensor : a tensor of size 'size' filled with k
+
+        :param int k: the value to fill the tensor with
+        :param Tuple[int] size: the size of the tensor
+
+        :return Tensor: the tensor filled with k
         """
         return torch.full((size, ), k, dtype = torch.float32, device = self.device)
     

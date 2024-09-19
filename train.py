@@ -12,7 +12,7 @@ os.environ["USE_FLASH_ATTENTION"] = "1"
 
 @hydra.main(version_base=None, config_path="configs", config_name="config")
 def my_app(cfg : DictConfig) -> None:
-    # torch.set_float32_matmul_precision("high")
+    torch.set_float32_matmul_precision("medium")
     pl.seed_everything(cfg.seed)
 
     cfg_yaml = OmegaConf.to_yaml(cfg, resolve=True)

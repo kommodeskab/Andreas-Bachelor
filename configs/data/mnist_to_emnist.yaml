@@ -1,9 +1,11 @@
 _target_: src.data_modules.OT_datamodules.StandardSchrodingerDM
+
 start_dataset:
   _target_: src.dataset.emnist.EMNIST
   split: 'digits'
 end_dataset:
   _target_: src.dataset.emnist.EMNIST
   split: 'letters'
+  
 batch_size: 128
 num_workers: 8
