@@ -99,20 +99,20 @@ class StandardDSB(BaseLightningModule):
         if self.has_converged():
             if not self.hparams.training_backward: 
                 self.DSB_iteration += 1
+
+                # resetting the learning rate
+                for optimizer in self.optimizers():
+                    for pg in optimizer.param_groups:
+                        pg['lr'] = self.hparams.lr
+
+                # resetting the learning rate scheduler
+                # only works for ReduceLROnPlateau
+                for scheduler in self.lr_schedulers():
+                    scheduler.num_bad_epochs = 0
                 
             self.hparams.training_backward = not self.hparams.training_backward
             self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
             self.val_losses = []
-            
-            # resetting the learning rate
-            for optimizer in self.optimizers():
-                for pg in optimizer.param_groups:
-                    pg['lr'] = self.hparams.lr
-                    
-            # resetting the learning rate scheduler
-            # only works for ReduceLROnPlateau
-            for scheduler in self.lr_schedulers():
-                scheduler.num_bad_epochs = 0
             
             return -1
     
@@ -171,16 +171,16 @@ class StandardDSB(BaseLightningModule):
         """
         raise NotImplementedError
     
-    def _forward_loss(self, xk_plus_one : Tensor, ks_plus_one : int, xN : Tensor) -> Tuple[Tensor, Tensor]:
+    def _forward_loss(self, xk : Tensor, ks : int, xN : Tensor) -> Tuple[Tensor, Tensor]:
         """
         Compute the loss for the forward model.
         Uses the backward model to 'walk' backwards and optimize the forward model to 'walk' back to the original point
         
-        :param Tensor xk_plus_one: the current point
-        :param Tensor ks_plus_one: the current step
+        :param Tensor xk: the current point
+        :param Tensor ks: the current step
         :param Tensor xN: the end point
         
-        :return loss and xk: the loss and the previous point
+        :return loss: the loss and the previous point
         """
         raise NotImplementedError
     
@@ -193,7 +193,7 @@ class StandardDSB(BaseLightningModule):
         :param Tensor ks: the current step
         :param Tensor x0: the start point
         
-        :return loss and xk_plus_one: the loss and the next point
+        :return loss: the loss and the next point
         """
         raise NotImplementedError
     
@@ -210,7 +210,7 @@ class StandardDSB(BaseLightningModule):
         :return Tensor: the final point xN / x0 or the trajectory
         """
         
-        trajectory = torch.zeros(self.hparams.num_steps + 1, *x_start.size())
+        trajectory = torch.zeros(self.hparams.num_steps + 1, *x_start.size()).to(self.device)
         
         if forward:
             xk = x_start
@@ -249,16 +249,18 @@ class StandardDSB(BaseLightningModule):
         if not isinstance(batch, int):
             self.cache = self.sample(batch, forward = self.hparams.training_backward, return_trajectory = True)
         
+        # trajectory.shape = (num_steps + 1, batch_size, *x_start.size())
         trajectory = self.cache
             
         x0, xN = trajectory[0], trajectory[-1]
         traj_len, batch_size = trajectory.size(0), trajectory.size(1)
         
-        ks = torch.randint(0, traj_len - 1, (batch_size,))
+        ks = torch.randint(0, traj_len - 1, (batch_size,)).to(self.device)
         if self.hparams.training_backward:
             ks += 1
-            
-        sampled_batch = trajectory[ks, torch.arange(batch_size)].requires_grad_()
+
+        what_batches = torch.arange(batch_size).to(self.device)
+        sampled_batch = trajectory[ks, what_batches].to(self.device).requires_grad_()
         
         if self.hparams.training_backward:
             loss = self._backward_loss(sampled_batch, ks, x0)
