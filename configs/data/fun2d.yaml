@@ -1,3 +1,3 @@
-_target_: src.data_modules.OT_datamodules.Fun2dSchrodingerDM
+_target_: src.data_modules.simple_dm.Fun2dSchrodingerDM
 batch_size: 256
-size: 50000
+size: 15000

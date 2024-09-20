@@ -57,6 +57,7 @@ class SimpleNetwork(BaseTorchModule):
         self.x_encoder = MLP(in_features, encoder_layers + [middle_size])
         self.time_encoder = MLP(time_encoding_size, encoder_layers + [middle_size])
         self.decoder = MLP(2 * middle_size, decoder_layers + [out_features])
+        self.final_activation = nn.Tanh()
 
     def forward(self, x : torch.Tensor, t : torch.Tensor):
         t = t.unsqueeze(1)
@@ -67,5 +68,7 @@ class SimpleNetwork(BaseTorchModule):
 
         out = torch.cat([x_enc, time_enc], dim = 1)
         out = self.decoder(out)
+
+        out = self.final_activation(out)
 
         return out
