@@ -16,7 +16,7 @@ class TRDSB(BaseReparameterizedDSB):
         
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
         if self.DSB_iteration == 0 and self.hparams.training_backward:
-            return self.ornstein_uhlenbeck(xk, k)
+            return self._initial_go_forward(xk, k)
         
         batch_size = xk.size(0)
         ks = self.k_to_tensor(k, batch_size)
@@ -53,7 +53,7 @@ class FRDSB(BaseReparameterizedDSB):
         
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
         if self.DSB_iteration == 0 and self.hparams.training_backward:
-            return self.ornstein_uhlenbeck(xk, k)
+            return self._initial_go_forward(xk, k)
         
         batch_size = xk.size(0)
         ks = self.k_to_tensor(k, batch_size)

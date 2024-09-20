@@ -1,5 +1,5 @@
 import torch
-from typing import Tuple, Any, Callable
+from typing import Tuple, Any, Callable, Literal
 from torch import Tensor
 from src.lightning_modules.baselightningmodule import BaseLightningModule
 from torch.optim import Adam, AdamW
@@ -20,7 +20,9 @@ class StandardDSB(BaseLightningModule):
         max_evals: int | None = None,
         strict_gammas : bool = True,
         lr : float = 1e-3,
+        lr_factor : float = 0.5,
         max_norm : float = 0.5,
+        initial_forward_sampling: Literal["ornstein_uhlenbeck", "brownian"] = "ornstein_uhlenbeck",
     ):
         """
         Initializes the StandardDSB model
@@ -96,11 +98,15 @@ class StandardDSB(BaseLightningModule):
         if self.has_converged():
             if not self.hparams.training_backward: 
                 self.DSB_iteration += 1
-                
+            
             self.hparams.training_backward = not self.hparams.training_backward
             self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
             self.val_losses = []
             
+            # decreasing the learning rate
+            # since each network is a refined version of the prior
+            # we decrease the learning rate
+            self.hparams["lr"] *= self.hparams.lr_factor
             # resetting the learning rate
             for optimizer in self.optimizers():
                 for pg in optimizer.param_groups:
@@ -145,6 +151,14 @@ class StandardDSB(BaseLightningModule):
     def brownian(self, xk : Tensor, k : int) -> Tensor:
         sigma = torch.sqrt(2 * self.gammas[k + 1])
         return xk + sigma * torch.randn_like(xk)
+    
+    def _initial_go_forward(self, xk : Tensor, k : int) -> Tensor:
+        if self.hparams.initial_forward_sampling == "ornstein_uhlenbeck":
+            return self.ornstein_uhlenbeck(xk, k)
+        elif self.hparams.initial_forward_sampling == "brownian":
+            return self.brownian(xk, k)
+        else:
+            raise ValueError(f"Invalid initial_forward_sampling {self.hparams.initial_forward_sampling}")
         
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
         """        
@@ -307,7 +321,7 @@ class StandardDSB(BaseLightningModule):
         
         # convergence will happen after 'patience' validation steps with no improvement
         # therefore reduce the lr after 'patience // 2' validation steps with no improvement
-        lr_args = {'patience': self.hparams.patience // 2, 'factor': 0.5}
+        lr_args = {'patience': self.hparams.patience // 2, 'factor': self.hparams.lr_factor}
         backward_scheduler = {'scheduler': ReduceLROnPlateau(backward_opt, **lr_args), 'name': 'lr_scheduler_backward'}
         forward_scheduler = {'scheduler': ReduceLROnPlateau(forward_opt, **lr_args), 'name': 'lr_scheduler_forward'}
         
