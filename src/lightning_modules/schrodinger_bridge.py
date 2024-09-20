@@ -30,15 +30,18 @@ class StandardDSB(BaseLightningModule):
         Args:
             forward_model (torch.nn.Module): the forward model
             backward_model (torch.nn.Module): the backward model
-            max_gamma (float): the maximum gamma
-            min_gamma (float): the minimum gamma
+            max_gamma (float): the maximum gamma value
+            min_gamma (float): the minimum gamma value
             num_steps (int): the number of steps
             patience (int): the patience
-            max_batches (int): the maximum number of batches
-            strict_gammas (bool): whether to enforce the sum of gammas to be equal to 1
+            max_evals (int | None): the maximum number of evaluations
+            strict_gammas (bool): whether the gammas must sum to 1
             lr (float): the learning rate
-            max_norm (float): the maximum norm for clipping the gradients
+            lr_factor (float): the learning rate factor
+            max_norm (float): the maximum norm
+            initial_forward_sampling (Literal["ornstein_uhlenbeck", "brownian"]): the initial forward sampling
         """
+        
         super().__init__()
         self.save_hyperparameters(ignore = ["forward_model", "backward_model"])
         self.automatic_optimization : bool = False
@@ -101,34 +104,24 @@ class StandardDSB(BaseLightningModule):
         if self.has_converged():
             if not self.hparams.training_backward: 
                 self.DSB_iteration += 1
-            
-            self.hparams.training_backward = not self.hparams.training_backward
-            self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
-            self.val_losses = []
-            
-            # decreasing the learning rate
-            # since each network is a refined version of the prior
-            # we decrease the learning rate
-            self.hparams["lr"] *= self.hparams.lr_factor
-            # resetting the learning rate
-            for optimizer in self.optimizers():
-                for pg in optimizer.param_groups:
-                    pg['lr'] = self.hparams.lr
-                    
-            # resetting the learning rate scheduler
-            # only works for ReduceLROnPlateau
-            for scheduler in self.lr_schedulers():
-                scheduler.num_bad_epochs = 0
-
+                
+                # decreasing the learning rate
+                # since each network is a refined version of the prior
+                # we decrease the learning rate
+                self.hparams["lr"] *= self.hparams.lr_factor
                 # resetting the learning rate
                 for optimizer in self.optimizers():
                     for pg in optimizer.param_groups:
                         pg['lr'] = self.hparams.lr
-
+                
                 # resetting the learning rate scheduler
                 # only works for ReduceLROnPlateau
                 for scheduler in self.lr_schedulers():
                     scheduler.num_bad_epochs = 0
+            
+            self.hparams.training_backward = not self.hparams.training_backward
+            self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
+            self.val_losses = []
                 
             self.hparams.training_backward = not self.hparams.training_backward
             self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
@@ -274,6 +267,9 @@ class StandardDSB(BaseLightningModule):
     def training_step(self, batch : Tensor, batch_idx : int) -> Tensor:
         backward_opt, forward_opt = self.optimizers()
         
+        # using custom "cachedataloader" to deliver batches
+        # therefore, most batches will be 0 (meaning we need to use batch)
+        # if the batch is not a none, i.e. a tensor, then we create a new cache
         if not isinstance(batch, int):
             self.cache = self.sample(batch, forward = self.hparams.training_backward, return_trajectory = True)
         
@@ -286,8 +282,8 @@ class StandardDSB(BaseLightningModule):
         ks = torch.randint(0, traj_len - 1, (batch_size,)).to(self.device)
         if self.hparams.training_backward:
             ks += 1
-
         what_batches = torch.arange(batch_size).to(self.device)
+        
         sampled_batch = trajectory[ks, what_batches].to(self.device).requires_grad_()
         
         if self.hparams.training_backward:
