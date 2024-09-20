@@ -42,8 +42,8 @@ class TRDSB(BaseReparameterizedDSB):
         loss = self.mse(xN_pred, xN)
         return loss
     
-    def _backward_loss(self, xk_plus_one : Tensor, ks_plus_one : Tensor, x0 : Tensor) -> Tensor:
-        x0_pred = self.backward_call(xk_plus_one, ks_plus_one)
+    def _backward_loss(self, xk : Tensor, ks : Tensor, x0 : Tensor) -> Tensor:
+        x0_pred = self.backward_call(xk, ks)
         loss = self.mse(x0_pred, x0)
         return loss
     
@@ -80,8 +80,8 @@ class FRDSB(BaseReparameterizedDSB):
         loss = self.mse(target, pred)
         return loss
     
-    def _backward_loss(self, xk_plus_one : Tensor, ks_plus_one : Tensor, x0 : Tensor) -> Tensor:
-        target = (x0 - xk_plus_one) / self.gammas_bar[ks_plus_one]
-        pred = self.backward_call(xk_plus_one, ks_plus_one)
+    def _backward_loss(self, xk : Tensor, ks : Tensor, x0 : Tensor) -> Tensor:
+        target = (x0 - xk) / self.gammas_bar[ks]
+        pred = self.backward_call(xk, ks)
         loss = self.mse(target, pred)
         return loss

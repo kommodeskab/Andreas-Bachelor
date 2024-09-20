@@ -60,6 +60,9 @@ class StandardDSB(BaseLightningModule):
         self.val_losses : list = []
         self.DSB_iteration : int = 0
 
+    def on_train_start(self) -> None:
+        assert self.trainer.datamodule.hparams.training_backward == self.hparams.training_backward, "The training direction must be the same for datamodule and model"
+
     def has_converged(self) -> bool:
         """
         Determines if the model has converged based on the validation losses.
