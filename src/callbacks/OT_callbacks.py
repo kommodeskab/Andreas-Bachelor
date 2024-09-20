@@ -94,12 +94,12 @@ class SchrodingerPlot2dCB(pl.Callback):
             
             return fig
             
-        trajectory = pl_module.sample(x0, forward = True, return_trajectory=True)
+        trajectory = pl_module.sample(x0, forward = True, return_trajectory=True).cpu()
         fig = get_traj_fig(trajectory, f"Forward trajectory (Iteration: {iteration})")
         trainer.logger.experiment.add_figure(f"iteration_{iteration}/Forward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
         
-        trajectory = pl_module.sample(xN, forward = False, return_trajectory=True)
+        trajectory = pl_module.sample(xN, forward = False, return_trajectory=True).cpu()
         fig = get_traj_fig(trajectory, f"Backward trajectory (Iteration: {iteration})")
         trainer.logger.experiment.add_figure(f"iteration_{iteration}/Backward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
