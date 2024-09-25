@@ -9,6 +9,7 @@ class BaseDSBDM(pl.LightningDataModule):
         self,
         start_dataset : Dataset,
         end_dataset : Dataset,
+        num_iters : int,
         train_val_split : float = 0.95,
         batch_size : int = 10,
         num_workers: int = 4,
@@ -30,9 +31,9 @@ class BaseDSBDM(pl.LightningDataModule):
     
     def train_dataloader(self):
         if self.hparams.training_backward:
-            return CacheDataLoader(dataset = self.start_dataset_train, num_iters = 50, shuffle = True, **self.loader_kwargs)
+            return CacheDataLoader(dataset = self.start_dataset_train, num_iters = self.hparams.num_iters, shuffle = True, **self.loader_kwargs)
         else:
-            return CacheDataLoader(dataset = self.end_dataset_train, num_iters = 50, shuffle = True, **self.loader_kwargs)
+            return CacheDataLoader(dataset = self.end_dataset_train, num_iters = self.hparams.num_iters, shuffle = True, **self.loader_kwargs)
         
     def val_dataloader(self):
         return [

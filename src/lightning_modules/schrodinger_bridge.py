@@ -44,7 +44,7 @@ class StandardDSB(BaseLightningModule):
         
         super().__init__()
         self.save_hyperparameters(ignore = ["forward_model", "backward_model"])
-        self.automatic_optimization : bool = False
+        self.automatic_optimization = False
         self.hparams["training_backward"] = True
 
         assert max_gamma >= min_gamma, f"{max_gamma = } must be greater than {min_gamma = }"
@@ -63,7 +63,7 @@ class StandardDSB(BaseLightningModule):
         
         self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()        
         self.val_losses : list = []
-        self.DSB_iteration : int = 0
+        self.DSB_iteration : int = 1
 
     def on_train_start(self) -> None:
         assert self.trainer.datamodule.hparams.training_backward == self.hparams.training_backward, "The training direction must be the same for datamodule and model"
@@ -108,7 +108,8 @@ class StandardDSB(BaseLightningModule):
                 # decreasing the learning rate
                 # since each network is a refined version of the prior
                 # we decrease the learning rate
-                self.hparams["lr"] *= self.hparams.lr_factor
+                # self.hparams["lr"] *= self.hparams.lr_factor TODO: uncomment this line
+
                 # resetting the learning rate
                 for optimizer in self.optimizers():
                     for pg in optimizer.param_groups:
@@ -119,10 +120,6 @@ class StandardDSB(BaseLightningModule):
                 for scheduler in self.lr_schedulers():
                     scheduler.num_bad_epochs = 0
             
-            self.hparams.training_backward = not self.hparams.training_backward
-            self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
-            self.val_losses = []
-                
             self.hparams.training_backward = not self.hparams.training_backward
             self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
             self.val_losses = []
@@ -138,7 +135,7 @@ class StandardDSB(BaseLightningModule):
 
         :return Tensor: the tensor filled with k
         """
-        return torch.full((size, ), k, dtype = torch.float32, device = self.device)
+        return torch.full((size, ), k, dtype = torch.int64, device = self.device)
     
     def forward_call(self, x : Tensor, k: Tensor) -> Tensor:
         """
@@ -152,15 +149,17 @@ class StandardDSB(BaseLightningModule):
         """
         return self.backward_model(x, k)
     
-    def ornstein_uhlenbeck(self, xk : Tensor, k : int) -> Tensor:
-        alpha = 0.1
+    def ornstein_uhlenbeck(self, xk : Tensor, k : int, alpha : float | None = None) -> Tensor:
+        if alpha is None:
+            # this amounts to the forward process from a diffusion process
+            alpha = 1
         mu = xk - self.gammas[k + 1] * alpha * xk
         sigma = torch.sqrt(2 * self.gammas[k + 1])
         return mu + sigma * torch.randn_like(xk)
     
     def brownian(self, xk : Tensor, k : int) -> Tensor:
-        sigma = torch.sqrt(2 * self.gammas[k + 1])
-        return xk + sigma * torch.randn_like(xk)
+        # brownian motion is a special case of the ornstein-uhlenbeck process with alpha = 0
+        return self.ornstein_uhlenbeck(xk, k, alpha = 0)
     
     def _initial_go_forward(self, xk : Tensor, k : int) -> Tensor:
         if self.hparams.initial_forward_sampling == "ornstein_uhlenbeck":
@@ -219,7 +218,7 @@ class StandardDSB(BaseLightningModule):
         raise NotImplementedError
     
     @torch.no_grad()
-    def sample(self, x_start : Tensor, forward : bool = True, return_trajectory : bool = False) -> Tensor:
+    def sample(self, x_start : Tensor, forward : bool = True, return_trajectory : bool = False, clamp : bool = False) -> Tensor:
         """
         Given the start point x_start, sample the final point xN / x0 by going forward / backward
         Also, return the trajectory if return_trajectory is True
@@ -248,7 +247,11 @@ class StandardDSB(BaseLightningModule):
                 xk = self.go_backward(xk_plus_one, k + 1)
                 trajectory[k] = xk
                 xk_plus_one = xk
-            
+        
+        if clamp:
+            trajectory = torch.clamp(trajectory, -1, 1)
+            xk = torch.clamp(xk, -1, 1)
+
         return trajectory if return_trajectory else xk
     
     def _optimize(self, loss : Tensor, optimizer : Optimizer, model : Module) -> None:
@@ -275,7 +278,7 @@ class StandardDSB(BaseLightningModule):
         
         # trajectory.shape = (num_steps + 1, batch_size, *x_start.size())
         trajectory = self.cache
-            
+        
         x0, xN = trajectory[0], trajectory[-1]
         traj_len, batch_size = trajectory.size(0), trajectory.size(1)
         
@@ -294,7 +297,8 @@ class StandardDSB(BaseLightningModule):
             loss = self._forward_loss(sampled_batch, ks, xN)
             self._optimize(loss, forward_opt, self.forward_model)
             self.log(f"forward_loss_{self.DSB_iteration}/train", loss, on_step = True, on_epoch = False)
-                
+
+    @torch.no_grad()  
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> Tensor:
         trajectory = self.sample(batch, forward = self.hparams.training_backward, return_trajectory = True)
         batch_size = trajectory.size(1)

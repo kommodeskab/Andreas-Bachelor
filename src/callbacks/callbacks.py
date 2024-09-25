@@ -30,24 +30,24 @@ class PlotGammaScheduleCB(pl.Callback):
         plt.close(fig)
         
         if hasattr(pl_module, "gammas_bar"):
-            gammas_bar = pl_module.gammas_bar
+            gammas_bar = pl_module.gammas_bar[1:]
             fig = make_gamma_plot(gammas_bar, "Gamma bar", "Gamma bar schedule")
             trainer.logger.experiment.add_figure("gammaschedule/Gamma bar schedule", fig, global_step=trainer.global_step)
             plt.close(fig)
             
         if hasattr(pl_module, "sigma_backward"):
-            sigma_backward = pl_module.sigma_backward
+            sigma_backward = pl_module.sigma_backward[1:]
             fig = make_gamma_plot(sigma_backward, "Sigma backward", "Sigma backward schedule")
             trainer.logger.experiment.add_figure("gammaschedule/Sigma backward schedule", fig, global_step=trainer.global_step)
             plt.close(fig)
             
         if hasattr(pl_module, "sigma_forward"):
-            sigma_forward = pl_module.sigma_forward
+            sigma_forward = pl_module.sigma_forward[1:]
             fig = make_gamma_plot(sigma_forward, "Sigma forward", "Sigma forward schedule")
             trainer.logger.experiment.add_figure("gammaschedule/Sigma forward schedule", fig, global_step=trainer.global_step)
             plt.close(fig)
         
-class SchrodingerPlot2dCB(pl.Callback):
+class Plot2dCB(pl.Callback):
     def __init__(
         self, 
         num_points : int = 1000,
@@ -66,13 +66,16 @@ class SchrodingerPlot2dCB(pl.Callback):
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_train, self.num_points).to(device)
         xN = get_batch_from_dataset(trainer.datamodule.end_dataset_train, self.num_points).to(device)
         
-        def get_traj_fig(trajectory, title):    
+        def get_traj_fig(trajectory, title):
             random_points = random.sample(range(self.num_points), 5)
             traj_len = trajectory.shape[0]
             traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
             trajectory_to_plot = trajectory[traj_idx, :, :]
+            delta = 0.1
             min_x, max_x = trajectory[:, :, 0].min(), trajectory[:, :, 0].max()
             min_y, max_y = trajectory[:, :, 1].min(), trajectory[:, :, 1].max()
+            min_x, max_x = min_x - delta, max_x + delta
+            min_y, max_y = min_y - delta, max_y + delta
 
             fig, ax = plt.subplots(1, 5, figsize=(20, 4))
             colors = torch.sqrt(trajectory[0, :, 0] ** 2 + trajectory[0, :, 1] ** 2).tolist()
@@ -104,7 +107,7 @@ class SchrodingerPlot2dCB(pl.Callback):
         trainer.logger.experiment.add_figure(f"iteration_{iteration}/Backward trajectory", fig, global_step=trainer.global_step)
         plt.close(fig)
         
-class SchrodingerPlotImagesCB(pl.Callback):
+class PlotImagesCB(pl.Callback):
     def __init__(self):
         """
         Plots the forward and backward trajectory of the model on the validation set
@@ -117,7 +120,9 @@ class SchrodingerPlotImagesCB(pl.Callback):
         iteration = pl_module.DSB_iteration
 
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
-        trajectory = pl_module.sample(x0, forward = True, return_trajectory = True)
+        trajectory = pl_module.sample(x0, forward = True, return_trajectory = True, clamp=True)
+        # the output is between -1  and 1. We need to scale it to 0-1 for plotting
+        trajectory = (trajectory + 1) / 2
 
         traj_len = trajectory.shape[0]
         traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
@@ -137,6 +142,7 @@ class SchrodingerPlotImagesCB(pl.Callback):
         
         xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
         trajectory = pl_module.sample(xN, forward = False, return_trajectory = True)
+        trajectory = (trajectory + 1) / 2
 
         fig, ax = plt.subplots(5, 5, figsize=(20, 20))
         for i in range(5):
@@ -249,7 +255,7 @@ class GaussianTestCB(pl.Callback):
             trainer.logger.experiment.add_figure("Mu and sigma error", fig, global_step=trainer.global_step)
             plt.close(fig)
             
-class SchrodingerAudioCB(pl.Callback):
+class PlotAudioCB(pl.Callback):
     def __init__(self):
         super().__init__()
 

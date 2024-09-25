@@ -1,4 +1,4 @@
-_target_: src.data_modules.OT_datamodules.StandardSchrodingerDM
+_target_: src.data_modules.BaseDSBDM
 
 start_dataset:
   _target_: src.dataset.distributions.Uniform2dDataset
@@ -7,5 +7,6 @@ end_dataset:
   _target_: src.dataset.distributions.ChessBoard2dDataset
   size: 50_000
   
+num_iters: 500
 batch_size: 512
 num_workers: 8

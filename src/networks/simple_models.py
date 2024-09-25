@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import math
-from src.networks.basetorchmodule import BaseTorchModule
 
 def sinusoidal_encoding(tensor, enc_size, exponential_base = 10000.0):
     device = tensor.device
@@ -27,7 +26,7 @@ class MLP(nn.Module):
         # out_features = layer_sizes[-1]
 
         self.layers = nn.ModuleList()
-        for i, out_features in enumerate(layer_sizes):
+        for out_features in layer_sizes:
             self.layers.append(nn.Linear(in_features, out_features))
             in_features = out_features
 
@@ -42,33 +41,40 @@ class MLP(nn.Module):
                 x = self.dropout(x)
         return x
 
-class SimpleNetwork(BaseTorchModule):
+class SimpleNetwork(nn.Module):
     def __init__(
         self,
         in_features: int,
         out_features: int,
-        encoder_layers: list[int] = [16],
-        decoder_layers: list[int] = [128, 128],
+        num_time_embeddings : int,
+        encoder_layers: list[int] = [16, 32],
+        decoder_layers: list[int] = [32, 64, 128],
         time_encoding_size: int = 16,
     ):
         super().__init__()
-        middle_size = 2 * time_encoding_size
+        assert encoder_layers[-1] == decoder_layers[0], "Encoder and decoder must have the same middle size"
+        middle_size = encoder_layers[-1]
         self.time_encoding_size = time_encoding_size
-        self.x_encoder = MLP(in_features, encoder_layers + [middle_size])
-        self.time_encoder = MLP(time_encoding_size, encoder_layers + [middle_size])
+        self.time_embeddder = nn.Embedding(num_time_embeddings, time_encoding_size)
+
+        self.x_encoder = MLP(in_features, encoder_layers)
+        self.time_encoder = MLP(time_encoding_size, encoder_layers)
         self.decoder = MLP(2 * middle_size, decoder_layers + [out_features])
-        self.final_activation = nn.Tanh()
 
     def forward(self, x : torch.Tensor, t : torch.Tensor):
-        t = t.unsqueeze(1)
-        time_encoding = sinusoidal_encoding(t, self.time_encoding_size)
+        time_embed = self.time_embeddder(t.long())
 
         x_enc = self.x_encoder(x)
-        time_enc = self.time_encoder(time_encoding)
+        time_enc = self.time_encoder(time_embed)
 
         out = torch.cat([x_enc, time_enc], dim = 1)
         out = self.decoder(out)
 
-        out = self.final_activation(out)
-
         return out
+    
+if __name__ == "__main__":
+    x = torch.randn(32, 2)
+    t = torch.randint(0, 100, (32, ))
+    model = SimpleNetwork(2, 2, 100)
+    out = model(x, t)
+    print(out.size())

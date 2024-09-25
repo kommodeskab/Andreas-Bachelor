@@ -1,2 +1,2 @@
 plot_images:
-  _target_: src.callbacks.OT_callbacks.SchrodingerPlotImagesCB
+  _target_: src.callbacks.PlotImagesCB

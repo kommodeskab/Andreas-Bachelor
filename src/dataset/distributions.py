@@ -5,6 +5,7 @@ import random
 
 class StandardNormalDataset(Dataset):
     def __init__(self, mu, sigma, size : int = 1000):
+        super().__init__()
         self.size = size
         
         if isinstance(sigma, int):
@@ -17,6 +18,42 @@ class StandardNormalDataset(Dataset):
     
     def __getitem__(self, index):
         return self.values[index]
+    
+class Line2dDataset(Dataset):
+    def __init__(self, size : int = 1000):
+        super().__init__()
+        self.size = size
+
+        self.x_values = torch.zeros(size)
+        self.y_values = torch.rand(size) * 2 - 1
+        self.values = torch.stack([self.x_values, self.y_values], dim = 1)
+        self.values += torch.randn(size, 2) * 0.1
+
+    def __len__(self):
+        return self.size
+    
+    def __getitem__(self, index):
+        return self.values[index]
+
+class S2dDataset(Dataset):
+    def __init__(self, size: int = 1000):
+        super().__init__()
+        self.size = size
+
+        self.x_values = torch.linspace(-1, 1, size)
+        self.y_values = torch.sin(self.x_values * torch.pi)
+        self.y_values = self.y_values / torch.max(torch.abs(self.y_values)) 
+        self.y_values += torch.randn(size) * 0.1
+        self.values = torch.stack([self.x_values, self.y_values], dim=1)
+        # rotate all the values by 90 degrees
+        self.values = torch.stack([self.values[:, 1], -self.values[:, 0]], dim = 1)
+
+    def __len__(self):
+        return self.size
+    
+    def __getitem__(self, index):
+        return self.values[index]
+
 
 class Uniform2dDataset(Dataset):
     def __init__(self, size = 1000):
@@ -68,8 +105,10 @@ def plot_dataset(dataset, name = "plot"):
     data = torch.stack(data).numpy()
     print(data)
     plt.scatter(data[:, 0], data[:, 1])
+    # plt.xlim(-1, 1)
+    # plt.ylim(-1, 1)
     plt.savefig(f"{name}.png")
     
 if __name__ == "__main__":
-    dataset = ChessBoard2dDataset()
+    dataset = S2dDataset()
     plot_dataset(dataset, "chess")
