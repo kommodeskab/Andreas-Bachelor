@@ -4,6 +4,7 @@ defaults:
   - override /data: gaussian
   - override /callbacks: gaussian
   - override /model: gaussiantestmodel
+  - override /logger: default
 
 project_name: 'Bachelor'
 task_name: 'gaussian_test'

@@ -259,6 +259,7 @@ class StandardDSB(BaseLightningModule):
         optimizer.step()
     
     def training_step(self, batch : Tensor, batch_idx : int) -> Tensor:
+        self.hparams.num_iterations += 1
         backward_opt, forward_opt = self.optimizers()
         
         # using custom "cachedataloader" to deliver batches
@@ -283,11 +284,11 @@ class StandardDSB(BaseLightningModule):
         if self.hparams.training_backward:
             loss = self._backward_loss(sampled_batch, ks, x0)
             self._optimize(loss, backward_opt, self.backward_model)
-            self.log(f"backward_loss_{self.hparams.DSB_iteration}/train", loss, on_step = True, on_epoch = False)
+            self.log(f"train/backward_loss_{self.hparams.DSB_iteration}", loss, on_step = True, on_epoch = False)
         else:
             loss = self._forward_loss(sampled_batch, ks, xN)
             self._optimize(loss, forward_opt, self.forward_model)
-            self.log(f"forward_loss_{self.hparams.DSB_iteration}/train", loss, on_step = True, on_epoch = False)
+            self.log(f"train/forward_loss_{self.hparams.DSB_iteration}", loss, on_step = True, on_epoch = False)
 
     @torch.no_grad()  
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> Tensor:
@@ -299,12 +300,12 @@ class StandardDSB(BaseLightningModule):
             for k in range(1, self.hparams.num_steps + 1):
                 ks = self.k_to_tensor(k, batch_size)
                 loss = self._backward_loss(trajectory[k], ks, x0)
-                self.log(f"backward_loss_{self.hparams.DSB_iteration}/val", loss, prog_bar=True, add_dataloader_idx=False)
+                self.log(f"val/backward_loss_{self.hparams.DSB_iteration}", loss, prog_bar=True, add_dataloader_idx=False)
         elif not self.hparams.training_backward and dataloader_idx == 1:
             for k in range(0, self.hparams.num_steps):
                 ks = self.k_to_tensor(k, batch_size)
                 loss = self._forward_loss(trajectory[k], ks, xN)
-                self.log(f"forward_loss_{self.hparams.DSB_iteration}/val", loss, prog_bar=True, add_dataloader_idx=False)
+                self.log(f"val/forward_loss_{self.hparams.DSB_iteration}", loss, prog_bar=True, add_dataloader_idx=False)
  
     def on_validation_epoch_end(self) -> None:
         # after validation we want to update the learning rate
@@ -317,10 +318,10 @@ class StandardDSB(BaseLightningModule):
         
         # take a step based on the validation loss
         if self.hparams.training_backward:
-            val_loss = metrics[f"backward_loss_{self.hparams.DSB_iteration}/val"].item()
+            val_loss = metrics[f"val/backward_loss_{self.hparams.DSB_iteration}"].item()
             backward_scheduler.step(val_loss)
         else:
-            val_loss = metrics[f"forward_loss_{self.hparams.DSB_iteration}/val"].item()
+            val_loss = metrics[f"val/forward_loss_{self.hparams.DSB_iteration}"].item()
             forward_scheduler.step(val_loss)
         
     def configure_optimizers(self):

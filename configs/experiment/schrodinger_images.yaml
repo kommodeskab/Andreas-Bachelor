@@ -4,6 +4,7 @@ defaults:
   - override /data: one_to_seven
   - override /callbacks: schrodinger_images
   - override /model: schrodinger_images
+  - override /logger: default
 
 project_name: 'Bachelor'
 task_name: 'schrodinger_images'

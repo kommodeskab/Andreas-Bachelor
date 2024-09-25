@@ -1,4 +1,3 @@
-from typing import Any, Dict
 import pytorch_lightning as pl
 import torch
 import matplotlib.pyplot as plt
@@ -7,6 +6,7 @@ from src.lightning_modules.schrodinger_bridge import StandardDSB
 from src.lightning_modules.reparameterized_dsb import TRDSB
 from src.callbacks.utils import get_batch_from_dataset
 import random
+import wandb
 
 matplotlib.use('Agg')
 
@@ -26,25 +26,25 @@ class PlotGammaScheduleCB(pl.Callback):
         
         gammas = pl_module.gammas[1:] # first gamma is 0, and is never used (since indexing starts at 1)
         fig = make_gamma_plot(gammas, "Gamma", "Gamma schedule")
-        trainer.logger.experiment.add_figure("gammaschedule/Gamma schedule", fig, global_step=trainer.global_step)
+        wandb.log({"gammaschedule/Gamma schedule": wandb.Image(fig)})
         plt.close(fig)
         
         if hasattr(pl_module, "gammas_bar"):
             gammas_bar = pl_module.gammas_bar[1:]
             fig = make_gamma_plot(gammas_bar, "Gamma bar", "Gamma bar schedule")
-            trainer.logger.experiment.add_figure("gammaschedule/Gamma bar schedule", fig, global_step=trainer.global_step)
+            wandb.log({"gammaschedule/Gamma bar schedule": wandb.Image(fig)})
             plt.close(fig)
             
         if hasattr(pl_module, "sigma_backward"):
             sigma_backward = pl_module.sigma_backward[1:]
             fig = make_gamma_plot(sigma_backward, "Sigma backward", "Sigma backward schedule")
-            trainer.logger.experiment.add_figure("gammaschedule/Sigma backward schedule", fig, global_step=trainer.global_step)
+            wandb.log({"gammaschedule/Sigma backward schedule": wandb.Image(fig)})
             plt.close(fig)
             
         if hasattr(pl_module, "sigma_forward"):
             sigma_forward = pl_module.sigma_forward[1:]
             fig = make_gamma_plot(sigma_forward, "Sigma forward", "Sigma forward schedule")
-            trainer.logger.experiment.add_figure("gammaschedule/Sigma forward schedule", fig, global_step=trainer.global_step)
+            wandb.log({"gammaschedule/Sigma forward schedule": wandb.Image(fig)})
             plt.close(fig)
         
 class Plot2dCB(pl.Callback):
@@ -99,12 +99,12 @@ class Plot2dCB(pl.Callback):
             
         trajectory = pl_module.sample(x0, forward = True, return_trajectory=True).cpu()
         fig = get_traj_fig(trajectory, f"Forward trajectory (Iteration: {iteration})")
-        trainer.logger.experiment.add_figure(f"iteration_{iteration}/Forward trajectory", fig, global_step=trainer.global_step)
+        wandb.log({f"Forward trajectory/iteration_{iteration}": wandb.Image(fig)})
         plt.close(fig)
         
         trajectory = pl_module.sample(xN, forward = False, return_trajectory=True).cpu()
         fig = get_traj_fig(trajectory, f"Backward trajectory (Iteration: {iteration})")
-        trainer.logger.experiment.add_figure(f"iteration_{iteration}/Backward trajectory", fig, global_step=trainer.global_step)
+        wandb.log({f"Backward trajectory/iteration_{iteration}": wandb.Image(fig)})
         plt.close(fig)
         
 class PlotImagesCB(pl.Callback):
@@ -137,7 +137,7 @@ class PlotImagesCB(pl.Callback):
                     ax[i, j].set_title(f"Step {traj_idx[i]}", fontsize = 20)
 
         fig.suptitle(f"Forward trajectory (DSB-iteration: {iteration})", fontsize = 40)
-        trainer.logger.experiment.add_figure(f"iteration_{iteration}/Forward trajectory", fig, global_step=trainer.global_step)
+        wandb.log({f"Forward trajectory/iteration_{iteration}": wandb.Image(fig)})
         plt.close(fig)
         
         xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
@@ -154,64 +154,8 @@ class PlotImagesCB(pl.Callback):
                     ax[i, j].set_title(f"Step {traj_idx[i]}", fontsize = 20)
 
         fig.suptitle(f"Backward trajectory (DSB-iteration: {iteration})", fontsize = 40)
-        trainer.logger.experiment.add_figure(f"iteration_{iteration}/Backward trajectory", fig, global_step=trainer.global_step)
+        wandb.log({f"Backward trajectory/iteration_{iteration}": wandb.Image(fig)})
         plt.close(fig)
-        
-class DebugImagesCB(pl.Callback):
-    def __init__(self):
-        super().__init__()
-        
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
-        x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 1)
-        xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 1)
-        
-        if isinstance(pl_module, TRDSB):
-            forward_trajectory = pl_module.sample(x0, forward = True, return_trajectory = True)
-            backward_trajectory = pl_module.sample(xN, forward = False, return_trajectory = True)
-            
-            traj_len = forward_trajectory.shape[0]
-            traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
-            
-            forward_trajectory = forward_trajectory[traj_idx, :, :, :, :]
-            backward_trajectory = backward_trajectory[traj_idx, :, :, :, :]
-            
-            fig, ax = plt.subplots(5, 2, figsize=(20, 8))
-            for i in range(5):
-                xk = forward_trajectory[i, 0, :, :, :]
-                k = traj_idx[i]
-                ks = pl_module.k_to_tensor(k, 1)
-                x0_pred = pl_module.backward_call(xk, ks)
-                
-                ax[i, 0].imshow(xk.squeeze().cpu().permute(1, 2, 0))
-                ax[i, 0].axis("off")
-                ax[i, 0].set_title(f"Forward step {k}")
-                
-                ax[i, 1].imshow(x0_pred.squeeze().cpu().permute(1, 2, 0))
-                ax[i, 1].axis("off")
-                ax[i, 1].set_title(f"$x_0$ prediction")
-                
-            fig.suptitle("Forward trajectory", fontsize = 20)
-            trainer.logger.experiment.add_figure("debug/Forward trajectory", fig, global_step=trainer.global_step)
-            plt.close(fig)
-            
-            fig, ax = plt.subplots(5, 2, figsize=(20, 8))
-            for i in range(5):
-                xk = backward_trajectory[i, 0, :, :, :]
-                k = traj_idx[i]
-                ks = pl_module.k_to_tensor(k, 1)
-                xN_pred = pl_module.forward_call(xk, ks)
-                
-                ax[i, 0].imshow(xk.squeeze().cpu().permute(1, 2, 0))
-                ax[i, 0].axis("off")
-                ax[i, 0].set_title(f"Backward step {k}")
-                
-                ax[i, 1].imshow(xN_pred.squeeze().cpu().permute(1, 2, 0))
-                ax[i, 1].axis("off")
-                ax[i, 1].set_title(f"$x_N$ prediction")
-                
-            fig.suptitle("Backward trajectory", fontsize = 20)
-            trainer.logger.experiment.add_figure("debug/Backward trajectory", fig, global_step=trainer.global_step)
-            plt.close(fig)
                 
 class GaussianTestCB(pl.Callback):
     def __init__(
@@ -252,7 +196,7 @@ class GaussianTestCB(pl.Callback):
             plt.title("Mu and sigma error")
             fig = plt.gcf()
 
-            trainer.logger.experiment.add_figure("Mu and sigma error", fig, global_step=trainer.global_step)
+            wandb.log({"Mu and sigma error": wandb.Image(fig)}, step=trainer.global_step)
             plt.close(fig)
             
 class PlotAudioCB(pl.Callback):

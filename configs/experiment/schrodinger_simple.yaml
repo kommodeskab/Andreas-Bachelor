@@ -4,6 +4,7 @@ defaults:
   - override /data: square_to_chess
   - override /callbacks: schrodinger2d
   - override /model: simple_stolen_network
+  - override /logger: default
 
 project_name: 'Bachelor'
 task_name: 'schrodinger_2d'
