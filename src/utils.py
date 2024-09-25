@@ -1,6 +1,11 @@
 import os
 import hydra
 from omegaconf import DictConfig
+from datetime import datetime
+
+def get_current_time() -> str:
+    now = datetime.now()
+    return now.strftime("%d%m%y%H%M%S")
 
 def get_project_name_from_id(experiment_id : str) -> str | None:
     for dirpath, dirnames, _ in os.walk("logs"):

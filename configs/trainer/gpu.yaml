@@ -6,4 +6,4 @@ val_check_interval: 2000
 num_sanity_val_steps: 0
 fast_dev_run: False
 profiler: 'simple'
-# precision: '16-mixed'
+precision: '16-mixed'

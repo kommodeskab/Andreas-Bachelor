@@ -10,5 +10,5 @@ end_dataset:
   img_size: 16
   
 batch_size: 256
-num_iters: 500
+cache_num_iters: 500
 num_workers: 8

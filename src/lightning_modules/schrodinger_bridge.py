@@ -26,20 +26,6 @@ class StandardDSB(BaseLightningModule):
     ):
         """
         Initializes the StandardDSB model
-
-        Args:
-            forward_model (torch.nn.Module): the forward model
-            backward_model (torch.nn.Module): the backward model
-            max_gamma (float): the maximum gamma value
-            min_gamma (float): the minimum gamma value
-            num_steps (int): the number of steps
-            patience (int): the patience
-            max_evals (int | None): the maximum number of evaluations
-            strict_gammas (bool): whether the gammas must sum to 1
-            lr (float): the learning rate
-            lr_factor (float): the learning rate factor
-            max_norm (float): the maximum norm
-            initial_forward_sampling (Literal["ornstein_uhlenbeck", "brownian"]): the initial forward sampling
         """
         
         super().__init__()
@@ -47,7 +33,7 @@ class StandardDSB(BaseLightningModule):
         self.automatic_optimization = False
         self.hparams.update({
             "training_backward": True,
-            "num_iterations": 0,
+            "curr_num_iters": 0,
             "DSB_iteration": 1,
         })
 
@@ -73,7 +59,7 @@ class StandardDSB(BaseLightningModule):
         assert self.trainer.datamodule.hparams.training_backward == self.hparams.training_backward, "The training direction must be the same for datamodule and model"
     
     def _has_converged(self) -> bool:
-        curr_iters = self.hparams.num_iterations
+        curr_iters = self.hparams.curr_num_iters
         max_iters = self.hparams.max_iterations
 
         if isinstance(max_iters, int):
@@ -103,7 +89,7 @@ class StandardDSB(BaseLightningModule):
                 self.hparams.DSB_iteration += 1
                 self.hparams.training_backward = not self.hparams.training_backward
                 self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
-                self.hparams.num_iterations = 0
+                self.hparams.curr_num_iters = 0
                 
                 # resetting the learning rate
                 for optimizer in self.optimizers():
@@ -259,7 +245,7 @@ class StandardDSB(BaseLightningModule):
         optimizer.step()
     
     def training_step(self, batch : Tensor, batch_idx : int) -> Tensor:
-        self.hparams.num_iterations += 1
+        self.hparams.curr_num_iters += 1
         backward_opt, forward_opt = self.optimizers()
         
         # using custom "cachedataloader" to deliver batches
@@ -284,11 +270,11 @@ class StandardDSB(BaseLightningModule):
         if self.hparams.training_backward:
             loss = self._backward_loss(sampled_batch, ks, x0)
             self._optimize(loss, backward_opt, self.backward_model)
-            self.log(f"train/backward_loss_{self.hparams.DSB_iteration}", loss, on_step = True, on_epoch = False)
+            self.log(f"backward_loss_{self.hparams.DSB_iteration}/train", loss, on_step = True, on_epoch = False)
         else:
             loss = self._forward_loss(sampled_batch, ks, xN)
             self._optimize(loss, forward_opt, self.forward_model)
-            self.log(f"train/forward_loss_{self.hparams.DSB_iteration}", loss, on_step = True, on_epoch = False)
+            self.log(f"forward_loss_{self.hparams.DSB_iteration}/train", loss, on_step = True, on_epoch = False)
 
     @torch.no_grad()  
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> Tensor:
@@ -300,12 +286,12 @@ class StandardDSB(BaseLightningModule):
             for k in range(1, self.hparams.num_steps + 1):
                 ks = self.k_to_tensor(k, batch_size)
                 loss = self._backward_loss(trajectory[k], ks, x0)
-                self.log(f"val/backward_loss_{self.hparams.DSB_iteration}", loss, prog_bar=True, add_dataloader_idx=False)
+                self.log(f"backward_loss_{self.hparams.DSB_iteration}/val", loss, prog_bar=True, add_dataloader_idx=False)
         elif not self.hparams.training_backward and dataloader_idx == 1:
             for k in range(0, self.hparams.num_steps):
                 ks = self.k_to_tensor(k, batch_size)
                 loss = self._forward_loss(trajectory[k], ks, xN)
-                self.log(f"val/forward_loss_{self.hparams.DSB_iteration}", loss, prog_bar=True, add_dataloader_idx=False)
+                self.log(f"forward_loss_{self.hparams.DSB_iteration}/val", loss, prog_bar=True, add_dataloader_idx=False)
  
     def on_validation_epoch_end(self) -> None:
         # after validation we want to update the learning rate
@@ -318,10 +304,10 @@ class StandardDSB(BaseLightningModule):
         
         # take a step based on the validation loss
         if self.hparams.training_backward:
-            val_loss = metrics[f"val/backward_loss_{self.hparams.DSB_iteration}"].item()
+            val_loss = metrics[f"backward_loss_{self.hparams.DSB_iteration}/val"].item()
             backward_scheduler.step(val_loss)
         else:
-            val_loss = metrics[f"val/forward_loss_{self.hparams.DSB_iteration}"].item()
+            val_loss = metrics[f"forward_loss_{self.hparams.DSB_iteration}/val"].item()
             forward_scheduler.step(val_loss)
         
     def configure_optimizers(self):

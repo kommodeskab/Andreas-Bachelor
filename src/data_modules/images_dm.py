@@ -1,5 +1,5 @@
 from src.data_modules.base_dm import BaseDSBDM
-from src.dataset.mnist import FilteredMNIST
+from src.dataset import FilteredMNIST
 
 class OneAndSevenSchrodingerDM(BaseDSBDM):
     def __init__(

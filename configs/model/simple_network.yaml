@@ -1,20 +1,20 @@
 _target_: src.lightning_modules.reparameterized_dsb.TRDSB
 
 forward_model:
-  _target_: src.networks.simple_models.SimpleNetwork
+  _target_: src.networks.SimpleNetwork
   in_features: 2
   out_features: 2
   num_time_embeddings: 101
-  encoder_layers: [32, 64, 128]
-  decoder_layers: [128, 256, 32]
+  encoder_layers: [32, 128]
+  decoder_layers: [128, 64, 32]
   time_encoding_size: 32
 
 backward_model:
-  _target_: src.networks.simple_models.SimpleNetwork
+  _target_: src.networks.SimpleNetwork
   in_features: 2
   out_features: 2
   num_time_embeddings: 101
-  encoder_layers: [32, 64, 128]
+  encoder_layers: [32, 128]
   decoder_layers: [128, 256, 32]
   time_encoding_size: 32
 
