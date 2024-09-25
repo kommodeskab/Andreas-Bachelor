@@ -16,12 +16,12 @@ class StandardDSB(BaseLightningModule):
         max_gamma : float,
         min_gamma : float,
         num_steps : int,
-        patience: int,
-        max_evals: int | None = None,
+        max_iterations : int,
         strict_gammas : bool = True,
         lr : float = 1e-3,
         lr_factor : float = 0.5,
-        max_norm : float = 0.5,
+        lr_patience : int = 5,
+        max_norm : float = 1,
         initial_forward_sampling: Literal["ornstein_uhlenbeck", "brownian"] = "ornstein_uhlenbeck",
     ):
         """
@@ -45,9 +45,15 @@ class StandardDSB(BaseLightningModule):
         super().__init__()
         self.save_hyperparameters(ignore = ["forward_model", "backward_model"])
         self.automatic_optimization = False
-        self.hparams["training_backward"] = True
+        self.hparams.update({
+            "training_backward": True,
+            "num_iterations": 0,
+            "DSB_iteration": 1,
+        })
 
+        assert isinstance(max_iterations, (int, list[int])), f"{max_iterations = } must be an int or a list of ints"
         assert max_gamma >= min_gamma, f"{max_gamma = } must be greater than {min_gamma = }"
+
         first_steps = num_steps // 2
         gammas = torch.zeros(num_steps + 1)
         gammas[1:first_steps + 1] = torch.linspace(min_gamma, max_gamma, first_steps)
@@ -62,38 +68,29 @@ class StandardDSB(BaseLightningModule):
         self.backward_model : Callable[[Tensor, Tensor], Tensor] = backward_model
         
         self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()        
-        self.val_losses : list = []
-        self.DSB_iteration : int = 1
 
     def on_train_start(self) -> None:
         assert self.trainer.datamodule.hparams.training_backward == self.hparams.training_backward, "The training direction must be the same for datamodule and model"
-
-    def has_converged(self) -> bool:
-        """
-        Determines if the model has converged based on the validation losses.
-        Can be overriden to implement custom convergence criteria.
     
-        Checks if the validation losses have increased for 'patience' epochs.
-        If not, the model has converged.
-        """
-        losses, patience, max_evals = self.val_losses, self.hparams.patience, self.hparams.max_evals
+    def _has_converged(self) -> bool:
+        curr_iters = self.hparams.num_iterations
+        max_iters = self.hparams.max_iterations
 
-        if max_evals is not None:
-            if len(losses) >= max_evals:
-                return True
-
-        if len(losses) < patience + 1:
-            return False
+        if isinstance(max_iters, int):
+            return curr_iters >= max_iters
         
-        min_loss = min(losses[:-patience])
-        return all([l > min_loss for l in losses[-patience:]])
-    
+        if len(max_iters) < self.hparams.DSB_iteration:
+            max_iters = max_iters[-1]
+        else:
+            max_iters = max_iters[self.hparams.DSB_iteration - 1]
+
+        return curr_iters >= max_iters
+
     def on_train_batch_start(self, batch : Tensor, batch_idx : int) -> None:
         """
         We check if the model has converged before each batch
         if the model has converged we do the following:
         - switch the training direction
-        - reset the val_losses
         - reset the learning rate of the optimizer
         - reset the learning rate scheduler
         
@@ -101,15 +98,13 @@ class StandardDSB(BaseLightningModule):
         
         """
 
-        if self.has_converged():
+        if self._has_converged():
             if not self.hparams.training_backward: 
-                self.DSB_iteration += 1
+                self.hparams.DSB_iteration += 1
+                self.hparams.training_backward = not self.hparams.training_backward
+                self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
+                self.hparams.num_iterations = 0
                 
-                # decreasing the learning rate
-                # since each network is a refined version of the prior
-                # we decrease the learning rate
-                # self.hparams["lr"] *= self.hparams.lr_factor TODO: uncomment this line
-
                 # resetting the learning rate
                 for optimizer in self.optimizers():
                     for pg in optimizer.param_groups:
@@ -119,10 +114,6 @@ class StandardDSB(BaseLightningModule):
                 # only works for ReduceLROnPlateau
                 for scheduler in self.lr_schedulers():
                     scheduler.num_bad_epochs = 0
-            
-            self.hparams.training_backward = not self.hparams.training_backward
-            self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
-            self.val_losses = []
             
             return -1
     
@@ -167,7 +158,7 @@ class StandardDSB(BaseLightningModule):
         elif self.hparams.initial_forward_sampling == "brownian":
             return self.brownian(xk, k)
         else:
-            raise ValueError(f"Invalid initial_forward_sampling {self.hparams.initial_forward_sampling}")
+            raise ValueError(f"Invalid initial_forward_sampling: {self.hparams.initial_forward_sampling}")
         
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
         """        
@@ -292,11 +283,11 @@ class StandardDSB(BaseLightningModule):
         if self.hparams.training_backward:
             loss = self._backward_loss(sampled_batch, ks, x0)
             self._optimize(loss, backward_opt, self.backward_model)
-            self.log(f"backward_loss_{self.DSB_iteration}/train", loss, on_step = True, on_epoch = False)
+            self.log(f"backward_loss_{self.hparams.DSB_iteration}/train", loss, on_step = True, on_epoch = False)
         else:
             loss = self._forward_loss(sampled_batch, ks, xN)
             self._optimize(loss, forward_opt, self.forward_model)
-            self.log(f"forward_loss_{self.DSB_iteration}/train", loss, on_step = True, on_epoch = False)
+            self.log(f"forward_loss_{self.hparams.DSB_iteration}/train", loss, on_step = True, on_epoch = False)
 
     @torch.no_grad()  
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> Tensor:
@@ -308,12 +299,12 @@ class StandardDSB(BaseLightningModule):
             for k in range(1, self.hparams.num_steps + 1):
                 ks = self.k_to_tensor(k, batch_size)
                 loss = self._backward_loss(trajectory[k], ks, x0)
-                self.log(f"backward_loss_{self.DSB_iteration}/val", loss, prog_bar=True, add_dataloader_idx=False)
+                self.log(f"backward_loss_{self.hparams.DSB_iteration}/val", loss, prog_bar=True, add_dataloader_idx=False)
         elif not self.hparams.training_backward and dataloader_idx == 1:
             for k in range(0, self.hparams.num_steps):
                 ks = self.k_to_tensor(k, batch_size)
                 loss = self._forward_loss(trajectory[k], ks, xN)
-                self.log(f"forward_loss_{self.DSB_iteration}/val", loss, prog_bar=True, add_dataloader_idx=False)
+                self.log(f"forward_loss_{self.hparams.DSB_iteration}/val", loss, prog_bar=True, add_dataloader_idx=False)
  
     def on_validation_epoch_end(self) -> None:
         # after validation we want to update the learning rate
@@ -326,21 +317,17 @@ class StandardDSB(BaseLightningModule):
         
         # take a step based on the validation loss
         if self.hparams.training_backward:
-            val_loss = metrics[f"backward_loss_{self.DSB_iteration}/val"].item()
+            val_loss = metrics[f"backward_loss_{self.hparams.DSB_iteration}/val"].item()
             backward_scheduler.step(val_loss)
         else:
-            val_loss = metrics[f"forward_loss_{self.DSB_iteration}/val"].item()
+            val_loss = metrics[f"forward_loss_{self.hparams.DSB_iteration}/val"].item()
             forward_scheduler.step(val_loss)
-
-        self.val_losses.append(val_loss)
         
     def configure_optimizers(self):
         backward_opt = AdamW(self.backward_model.parameters(), lr = self.hparams.lr)
         forward_opt = AdamW(self.forward_model.parameters(), lr = self.hparams.lr)
-        
-        # convergence will happen after 'patience' validation steps with no improvement
-        # therefore reduce the lr after 'patience // 2' validation steps with no improvement
-        lr_args = {'patience': self.hparams.patience // 2, 'factor': self.hparams.lr_factor}
+
+        lr_args = {'patience': self.hparams.lr_patience, 'factor': self.hparams.lr_factor}
         backward_scheduler = {'scheduler': ReduceLROnPlateau(backward_opt, **lr_args), 'name': 'lr_scheduler_backward'}
         forward_scheduler = {'scheduler': ReduceLROnPlateau(forward_opt, **lr_args), 'name': 'lr_scheduler_forward'}
         

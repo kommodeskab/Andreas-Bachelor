@@ -60,7 +60,7 @@ class Plot2dCB(pl.Callback):
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         device = pl_module.device
-        iteration = pl_module.DSB_iteration
+        iteration = pl_module.hparams.DSB_iteration
 
         # yes yes we should be using the validation set bla bla but it is too small with the current implementation
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_train, self.num_points).to(device)
@@ -117,7 +117,7 @@ class PlotImagesCB(pl.Callback):
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         device = pl_module.device
-        iteration = pl_module.DSB_iteration
+        iteration = pl_module.hparams.DSB_iteration
 
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
         trajectory = pl_module.sample(x0, forward = True, return_trajectory = True, clamp=True)
@@ -226,7 +226,7 @@ class GaussianTestCB(pl.Callback):
 
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
-        current_dsb_iteration = pl_module.DSB_iteration
+        current_dsb_iteration = pl_module.hparams.DSB_iteration
 
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_samples).to(pl_module.device)
         xN_pred = pl_module.sample(x0, forward = True)

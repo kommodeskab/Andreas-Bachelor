@@ -16,7 +16,7 @@ class TRDSB(BaseReparameterizedDSB):
         super().__init__(**kwargs)
     
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
-        if self.DSB_iteration == 1 and self.hparams.training_backward:
+        if self.hparams.DSB_iteration == 1 and self.hparams.training_backward:
             return self._initial_go_forward(xk, k)
         
         batch_size = xk.size(0)
@@ -53,7 +53,7 @@ class FRDSB(BaseReparameterizedDSB):
         super().__init__(**kwargs)
         
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
-        if self.DSB_iteration == 1 and self.hparams.training_backward:
+        if self.hparams.DSB_iteration == 1 and self.hparams.training_backward:
             return self._initial_go_forward(xk, k)
         
         batch_size = xk.size(0)
