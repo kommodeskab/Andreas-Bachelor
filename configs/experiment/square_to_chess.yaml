@@ -1,10 +1,10 @@
 # @package _global_
 defaults:
   - override /trainer: gpu
-  - override /data: line_to_s
+  - override /data: square_to_chess
   - override /callbacks: schrodinger2d
   - override /model: twod
   - override /logger: default
 
-project_name: 'Line to S'
+project_name: 'square_to_chess'
 task_name: 'test'

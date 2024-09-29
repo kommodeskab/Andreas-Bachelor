@@ -3,7 +3,7 @@ defaults:
   - override /trainer: gpu
   - override /data: one_to_seven
   - override /callbacks: schrodinger_images
-  - override /model: schrodinger_images
+  - override /model: twod
   - override /logger: default
 
 project_name: 'Bachelor'

@@ -4,7 +4,8 @@ from pytorch_lightning.loggers import WandbLogger
 from omegaconf import OmegaConf
 from src.utils import get_ckpt_path, instantiate_callbacks, get_current_time
 import pytorch_lightning as pl
-import os, hydra, torch
+import os, hydra, torch, yaml
+import wandb
 
 os.environ["HYDRA_FULL_ERROR"] = "1"
 os.environ["USE_FLASH_ATTENTION"] = "1"
@@ -18,26 +19,34 @@ def my_app(cfg : DictConfig) -> None:
     print(f"Config:\n\n{cfg_yaml}")
     project_name, task_name = cfg.project_name, cfg.task_name
 
+    print("Instantiating model and datamodule..")
     datamodule = hydra.utils.instantiate(cfg.data)
     model = hydra.utils.instantiate(cfg.model)
 
+    print("Compiling model..")
     if cfg.compile:
         torch.compile(model)
     
+    print("Setting up logger..")
     logger = WandbLogger(
+        **cfg.logger,
         project = project_name, 
         name = task_name, 
         version=get_current_time(), 
-        **cfg.logger
         )
+    logger.experiment.config.update(dict(cfg))
     
+    print("Instantiating callbacks..")
     callbacks = instantiate_callbacks(cfg.get("callbacks", None))
+
+    print("Setting up trainer..")
     trainer = Trainer(
         **cfg.trainer, 
         logger = logger, 
         callbacks = callbacks
         )
-    
+        
+    print("Beginning training..")
     trainer.fit(model, datamodule)
 
 if __name__ == "__main__":

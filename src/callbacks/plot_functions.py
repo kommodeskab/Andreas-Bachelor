@@ -1,6 +1,9 @@
 import matplotlib.pyplot as plt
 import random
 import torch
+import matplotlib
+
+matplotlib.use('Agg')
 
 def get_gamma_fig(gammas, ylabel, title):
     ts = range(1, len(gammas)+1)

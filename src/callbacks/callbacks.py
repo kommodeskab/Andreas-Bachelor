@@ -59,16 +59,17 @@ class Plot2dCB(pl.Callback):
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         iteration = pl_module.hparams.DSB_iteration
-            
-        trajectory = pl_module.sample(self.x0, forward = True, return_trajectory=True).cpu()
-        fig = get_traj_fig(trajectory, f"Forward trajectory (Iteration: {iteration})", num_points = self.num_points)
-        wandb.log({f"iteration_{iteration}/Forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
-        plt.close(fig)
         
-        trajectory = pl_module.sample(self.xN, forward = False, return_trajectory=True).cpu()
-        fig = get_traj_fig(trajectory, f"Backward trajectory (Iteration: {iteration})", num_points = self.num_points)
-        wandb.log({f"iteration_{iteration}/Backward trajectory": wandb.Image(fig)}, step=trainer.global_step)
-        plt.close(fig)
+        if not pl_module.hparams.training_backward:
+            trajectory = pl_module.sample(self.x0, forward = True, return_trajectory=True).cpu()
+            fig = get_traj_fig(trajectory, f"Forward trajectory (Iteration: {iteration})", num_points = self.num_points)
+            wandb.log({f"iteration_{iteration}/Forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+            plt.close(fig)
+        else:
+            trajectory = pl_module.sample(self.xN, forward = False, return_trajectory=True).cpu()
+            fig = get_traj_fig(trajectory, f"Backward trajectory (Iteration: {iteration})", num_points = self.num_points)
+            wandb.log({f"iteration_{iteration}/Backward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+            plt.close(fig)
  
 class PlotImagesCB(pl.Callback):
     def __init__(self):
@@ -82,7 +83,7 @@ class PlotImagesCB(pl.Callback):
         device = pl_module.device
         self.x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
         self.xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
-        trajectory = pl_module.sample(self.x0, forward = True, return_trajectory = True, clamp=True)
+        trajectory = pl_module.sample(self.x0, forward = True, return_trajectory = True, clamp=True, ema_scope=True)
         trajectory = (trajectory + 1) / 2
         
         fig = get_image_fig(trajectory, "Initial forward trajectory")
@@ -93,19 +94,20 @@ class PlotImagesCB(pl.Callback):
         pl_module.eval()
         iteration = pl_module.hparams.DSB_iteration
 
-        trajectory = pl_module.sample(self.x0, forward = True, return_trajectory = True, clamp=True)
-        trajectory = (trajectory + 1) / 2
+        if not pl_module.hparams.training_backward:
+            trajectory = pl_module.sample(self.x0, forward = True, return_trajectory = True, clamp=True, ema_scope=True)
+            trajectory = (trajectory + 1) / 2
 
-        fig = get_image_fig(trajectory, f"Forward trajectory (DSB-iteration: {iteration})")
-        wandb.log({f"iteration_{iteration}/Forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
-        plt.close(fig)
-        
-        trajectory = pl_module.sample(self.xN, forward = False, return_trajectory = True)
-        trajectory = (trajectory + 1) / 2
+            fig = get_image_fig(trajectory, f"Forward trajectory (DSB-iteration: {iteration})")
+            wandb.log({f"iteration_{iteration}/Forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+            plt.close(fig)
+        else:
+            trajectory = pl_module.sample(self.xN, forward = False, return_trajectory = True, clamp=True, ema_scope=True)
+            trajectory = (trajectory + 1) / 2
 
-        fig = get_image_fig(trajectory, f"Backward trajectory (DSB-iteration: {iteration})")
-        wandb.log({f"iteration_{iteration}/Backward trajectory": wandb.Image(fig)}, step=trainer.global_step)
-        plt.close(fig)
+            fig = get_image_fig(trajectory, f"Backward trajectory (DSB-iteration: {iteration})")
+            wandb.log({f"iteration_{iteration}/Backward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+            plt.close(fig)
                 
 class GaussianTestCB(pl.Callback):
     def __init__(self, num_samples : int = 1000):
