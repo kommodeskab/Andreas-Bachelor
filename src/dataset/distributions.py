@@ -3,7 +3,7 @@ from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
 import random
 
-class StandardNormalDataset(Dataset):
+class NormalDataset(Dataset):
     def __init__(self, mu, sigma, size : int = 1000):
         super().__init__()
         self.size = size
@@ -18,6 +18,18 @@ class StandardNormalDataset(Dataset):
     
     def __getitem__(self, index):
         return self.values[index]
+
+class StandardNormalDataset(Dataset):
+    def __init__(self, dim : int, size : int = 1000):
+        super().__init__()
+        self.dim = dim
+        self.size = size
+    
+    def __len__(self):
+        return self.size
+    
+    def __getitem__(self, index):
+        return torch.randn(self.dim)
     
 class Line2dDataset(Dataset):
     def __init__(self, size : int = 1000):
