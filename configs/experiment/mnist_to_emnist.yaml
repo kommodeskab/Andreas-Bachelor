@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - override /trainer: gpu
+  - override /data: mnist_to_emnist
+  - override /callbacks: schrodinger_images
+  - override /model: images
+  - override /logger: default
+
+project_name: 'mnist_to_emnist'
+task_name: 'test'

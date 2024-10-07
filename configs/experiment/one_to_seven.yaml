@@ -1,0 +1,35 @@
+# @package _global_
+defaults:
+  - override /trainer: gpu
+  - override /data: one_to_seven
+  - override /callbacks: schrodinger_images
+  - override /model: images
+  - override /logger: default
+
+project_name: 'one_to_seven'
+task_name: 'test'
+
+trainer:
+  val_check_interval: 500
+
+model:
+  max_gamma: 0.02
+  min_gamma: 0.02
+  num_steps: 50
+  patience: 5
+  max_iterations: 5000
+  strict_gammas: True
+  lr: 0.001
+  accumulate_grad_batches: 1
+  lr_factor: 0.5
+  lr_patience: 3
+  max_norm: 30000
+  initial_forward_sampling: "ornstein_uhlenbeck"
+
+data:
+  cache_num_iters: 100
+  batch_size: 256
+  start_dataset:
+    img_size: 16
+  end_dataset:
+    img_size: 16

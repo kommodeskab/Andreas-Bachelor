@@ -1,19 +1,27 @@
-_target_: src.lightning_modules.schrodinger_bridge.FRSchrodingerBridge
+_target_: src.lightning_modules.reparameterized_dsb.FRDSB
 
 forward_model:
-  _target_: src.networks.unets.UNet0D
-  in_features: 5
-  out_features: 5
-  num_layers: 2
+  _target_: src.networks.ResMLP
+  dim_in: 10
+  dim_out: 10
+  dim_hidden: 128
+  num_layers: 3
+  n_cond: 101
 
 backward_model:
-  _target_: src.networks.unets.UNet0D
-  in_features: 5
-  out_features: 5
-  num_layers: 2
+  _target_: src.networks.ResMLP
+  dim_in: 10
+  dim_out: 10
+  dim_hidden: 128
+  num_layers: 3
+  n_cond: 101
 
-patience: 5
 max_gamma: 0.01
 min_gamma: 0.01
 num_steps: 100
-lr: 0.0001
+max_iterations: 1000
+strict_gammas: True
+lr: 0.001
+lr_factor: 0.5
+lr_patience: 5
+max_norm: 1

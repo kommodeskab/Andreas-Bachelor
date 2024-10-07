@@ -4,8 +4,7 @@ from pytorch_lightning.loggers import WandbLogger
 from omegaconf import OmegaConf
 from src.utils import get_ckpt_path, instantiate_callbacks, get_current_time
 import pytorch_lightning as pl
-import os, hydra, torch, yaml
-import wandb
+import os, hydra, torch
 
 os.environ["HYDRA_FULL_ERROR"] = "1"
 os.environ["USE_FLASH_ATTENTION"] = "1"
@@ -34,7 +33,7 @@ def my_app(cfg : DictConfig) -> None:
         name = task_name, 
         version=get_current_time(), 
         )
-    logger.experiment.config.update(dict(cfg))
+    logger.experiment.config["cfg"] = cfg_yaml
     
     print("Instantiating callbacks..")
     callbacks = instantiate_callbacks(cfg.get("callbacks", None))

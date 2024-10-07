@@ -1,0 +1,10 @@
+# @package _global_
+defaults:
+  - override /trainer: gpu
+  - override /data: gaussian_data
+  - override /callbacks: gaussian_CB
+  - override /model: gaussian_model
+  - override /logger: default
+
+project_name: 'Gaussian test'
+task_name: 'test'

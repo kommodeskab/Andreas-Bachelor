@@ -5,7 +5,7 @@ import matplotlib
 from src.lightning_modules.schrodinger_bridge import StandardDSB
 from src.callbacks.utils import get_batch_from_dataset
 import wandb
-from src.callbacks.plot_functions import get_gamma_fig, get_traj_fig, get_image_fig
+from src.callbacks.plot_functions import get_gamma_fig, get_traj_fig, get_image_fig, get_grid_fig
 
 matplotlib.use('Agg')
 
@@ -53,23 +53,22 @@ class Plot2dCB(pl.Callback):
         self.xN = get_batch_from_dataset(trainer.datamodule.end_dataset_train, self.num_points).to(pl_module.device)
         trajectory = pl_module.sample(self.x0, forward=True, return_trajectory=True).cpu()
         fig = get_traj_fig(trajectory, "Initial forward trajectory", num_points = self.num_points)
-        wandb.log({"Initial forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+        wandb.log({"Initial forward trajectory/Initial forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
         plt.close(fig)
         
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         iteration = pl_module.hparams.DSB_iteration
         
-        if not pl_module.hparams.training_backward:
-            trajectory = pl_module.sample(self.x0, forward = True, return_trajectory=True).cpu()
-            fig = get_traj_fig(trajectory, f"Forward trajectory (Iteration: {iteration})", num_points = self.num_points)
-            wandb.log({f"iteration_{iteration}/Forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
-            plt.close(fig)
-        else:
-            trajectory = pl_module.sample(self.xN, forward = False, return_trajectory=True).cpu()
-            fig = get_traj_fig(trajectory, f"Backward trajectory (Iteration: {iteration})", num_points = self.num_points)
-            wandb.log({f"iteration_{iteration}/Backward trajectory": wandb.Image(fig)}, step=trainer.global_step)
-            plt.close(fig)
+        trajectory = pl_module.sample(self.x0, forward = True, return_trajectory=True).cpu()
+        fig = get_traj_fig(trajectory, f"Forward trajectory (Iteration: {iteration})", num_points = self.num_points)
+        wandb.log({f"iteration_{iteration}/Forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+        plt.close(fig)
+        
+        trajectory = pl_module.sample(self.xN, forward = False, return_trajectory=True).cpu()
+        fig = get_traj_fig(trajectory, f"Backward trajectory (Iteration: {iteration})", num_points = self.num_points)
+        wandb.log({f"iteration_{iteration}/Backward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+        plt.close(fig)
  
 class PlotImagesCB(pl.Callback):
     def __init__(self):
@@ -87,66 +86,92 @@ class PlotImagesCB(pl.Callback):
         trajectory = (trajectory + 1) / 2
         
         fig = get_image_fig(trajectory, "Initial forward trajectory")
-        wandb.log({"Initial forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+        wandb.log({"Initial forward trajectory/Initial forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
         plt.close(fig)
 
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         iteration = pl_module.hparams.DSB_iteration
 
-        if not pl_module.hparams.training_backward:
-            trajectory = pl_module.sample(self.x0, forward = True, return_trajectory = True, clamp=True, ema_scope=True)
-            trajectory = (trajectory + 1) / 2
+        trajectory = pl_module.sample(self.x0, forward = True, return_trajectory = True, clamp=True, ema_scope=True)
+        trajectory = (trajectory + 1) / 2
 
-            fig = get_image_fig(trajectory, f"Forward trajectory (DSB-iteration: {iteration})")
-            wandb.log({f"iteration_{iteration}/Forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
-            plt.close(fig)
-        else:
-            trajectory = pl_module.sample(self.xN, forward = False, return_trajectory = True, clamp=True, ema_scope=True)
-            trajectory = (trajectory + 1) / 2
+        fig = get_image_fig(trajectory, f"Forward trajectory (DSB-iteration: {iteration})")
+        wandb.log({f"iteration_{iteration}/Forward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+        plt.close(fig)
 
-            fig = get_image_fig(trajectory, f"Backward trajectory (DSB-iteration: {iteration})")
-            wandb.log({f"iteration_{iteration}/Backward trajectory": wandb.Image(fig)}, step=trainer.global_step)
-            plt.close(fig)
-                
+        trajectory = pl_module.sample(self.xN, forward = False, return_trajectory = True, clamp=True, ema_scope=True)
+        trajectory = (trajectory + 1) / 2
+
+        fig = get_image_fig(trajectory, f"Backward trajectory (DSB-iteration: {iteration})")
+        wandb.log({f"iteration_{iteration}/Backward trajectory": wandb.Image(fig)}, step=trainer.global_step)
+        plt.close(fig)
+
+class PlotImageSamplesCB(pl.Callback):
+    def __init__(self, num_rows : int = 5):
+        super().__init__()
+        self.num_rows = num_rows
+
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
+        pl_module.eval()
+        iteration = pl_module.hparams.DSB_iteration
+        device = pl_module.device
+
+        xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, self.num_rows ** 2, shuffle=True).to(device)
+        x0_pred = pl_module.sample(xN, forward = False, return_trajectory = False, clamp=True, ema_scope=True)
+        xN = (xN + 1) / 2
+        x0_pred = (x0_pred + 1) / 2
+        xN = xN.permute(0, 2, 3, 1).cpu().detach().numpy()
+        x0_pred = x0_pred.permute(0, 2, 3, 1).cpu().detach().numpy()
+
+        fig = get_grid_fig(xN, x0_pred, self.num_rows)
+        wandb.log({f"iteration_{iteration}/Backward sampling": wandb.Image(fig)}, step=trainer.global_step)
+        plt.close(fig)
+        
+        x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_rows ** 2, shuffle=True).to(device)
+        xN_pred = pl_module.sample(x0, forward = True, return_trajectory = False, clamp=True, ema_scope=True)
+        x0 = (x0 + 1) / 2
+        xN_pred = (xN_pred + 1) / 2
+        x0 = x0.permute(0, 2, 3, 1).cpu().detach().numpy()
+        xN_pred = xN_pred.permute(0, 2, 3, 1).cpu().detach().numpy()
+        
+        fig = get_grid_fig(x0, xN_pred, self.num_rows)
+        wandb.log({f"iteration_{iteration}/Forward sampling": wandb.Image(fig)}, step=trainer.global_step)
+        plt.close(fig)
+
 class GaussianTestCB(pl.Callback):
     def __init__(self, num_samples : int = 1000):
         super().__init__()
         self.num_samples = num_samples
     
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
-        pl_module.gaussian_test_results = {}
+        self.kl_divergences = {}
 
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
+    def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
+        iteration = pl_module.hparams.DSB_iteration
         pl_module.eval()
-        current_dsb_iteration = pl_module.hparams.DSB_iteration
 
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_samples).to(pl_module.device)
         xN_pred = pl_module.sample(x0, forward = True)
-        xN_pred_mu, xN_pred_sigma = xN_pred.mean(dim = 0), xN_pred.std(dim = 0)
-        xN_real_mu, xN_real_sigma = trainer.datamodule.end_mu.to(pl_module.device), trainer.datamodule.end_sigma.to(pl_module.device)
-        mu_error = torch.norm(xN_pred_mu - xN_real_mu).item()
-        sigma_error = torch.norm(xN_pred_sigma - xN_real_sigma).item()
+        pred_mu, pred_sigma = xN_pred.mean(dim = 0), xN_pred.std(dim = 0)
+        real_mu, real_sigma = trainer.datamodule.end_dataset.mu, trainer.datamodule.end_dataset.sigma
+        # calculate the kl divergence assuming normal distributions
+        kl_divergence : torch.Tensor = 0.5 * (torch.log(real_sigma / pred_sigma) + (pred_sigma ** 2 + (pred_mu - real_mu) ** 2) / real_sigma - 1)
+        kl_divergence = kl_divergence.sum().item()
         
-        pl_module.gaussian_test_results[current_dsb_iteration] = {
-            "mu_error": mu_error,
-            "sigma_error": sigma_error
-        }
+        self.kl_divergences[iteration] = kl_divergence
 
-        if current_dsb_iteration > 1:
-            mu_errors = [v["mu_error"] for v in pl_module.gaussian_test_results.values()]
-            sigma_errors = [v["sigma_error"] for v in pl_module.gaussian_test_results.values()]
+        if iteration > 1:
+            divergences = self.kl_divergences.values()
 
-            plt.plot(mu_errors, label = "Mu error")
-            plt.plot(sigma_errors, label = "Sigma error")
-            plt.xlabel("Iteration")
-            plt.ylabel("Error")
-            plt.legend()
-            plt.title("Mu and sigma error")
-            fig = plt.gcf()
-
-            wandb.log({"Mu and sigma error": wandb.Image(fig)}, step=trainer.global_step)
-            plt.close(fig)
+            plt.plot(range(1, iteration + 1), divergences, "o-")
+            plt.grid(True)
+            plt.xticks(range(1, iteration + 1))
+            plt.xlabel("DSB iteration")
+            plt.ylabel("KL divergence")
+            plt.title("KL divergence between predicted and real distribution")
+            wandb.log({f"iteration_{iteration}/KL divergence": wandb.Image(plt)}, step=trainer.global_step)
+            plt.close()
             
 class PlotAudioCB(pl.Callback):
     def __init__(self):

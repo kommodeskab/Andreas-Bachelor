@@ -2,12 +2,14 @@ import torch
 from typing import Tuple, Any, Callable, Literal
 from torch import Tensor
 from src.lightning_modules.baselightningmodule import BaseLightningModule
-from torch.optim import Adam, AdamW
+from torch.optim import AdamW
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import ReduceLROnPlateau
 from torch.nn.utils import clip_grad_norm_
 from torch.nn import Module
 from torch_ema import ExponentialMovingAverage
+from torch.nn import init
+
 class StandardDSB(BaseLightningModule):
     def __init__(
         self,
@@ -17,13 +19,15 @@ class StandardDSB(BaseLightningModule):
         min_gamma : float,
         num_steps : int,
         patience : int | None = None,
-        max_iterations : int | list[int] | None = None,
+        max_iterations : int | None = None,
+        accumulate_grad_batches : int = 1,
+        min_iterations : int = 1,
         strict_gammas : bool = True,
         lr : float = 1e-4,
         lr_factor : float = 0.5,
         lr_patience : int = 5,
         max_norm : float = 1,
-        initial_forward_sampling: Literal["ornstein_uhlenbeck", "brownian"] = "ornstein_uhlenbeck",
+        initial_forward_sampling: Literal["ornstein_uhlenbeck", "brownian"] | None = "ornstein_uhlenbeck",
     ):
         """
         Initializes the StandardDSB model
@@ -39,8 +43,6 @@ class StandardDSB(BaseLightningModule):
             "val_losses": [],
         })
 
-        assert (max_iterations is not None) != (patience is not None), f"Either {max_iterations = } or {patience = } must be None"
-        assert isinstance(max_iterations, (int, list[int], None)), f"{max_iterations = } must be an int or a list of ints or None"
         assert max_gamma >= min_gamma, f"{max_gamma = } must be greater than {min_gamma = }"
 
         first_steps = num_steps // 2
@@ -57,43 +59,43 @@ class StandardDSB(BaseLightningModule):
         self.backward_model : Callable[[Tensor, Tensor], Tensor] = backward_model
         
         self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()    
+        self.accumulated_loss = 0.0
 
-    def on_train_start(self) -> None:
+    def on_fit_start(self) -> None:
         # make the ema for the forward and backward models
         # we do it here and not in init because we need the device
         forward_params = [p for p in self.forward_model.parameters() if p.requires_grad]
         backward_params = [p for p in self.backward_model.parameters() if p.requires_grad]
-        self.forward_ema = ExponentialMovingAverage(forward_params, decay = 0.999)
-        self.backward_ema = ExponentialMovingAverage(backward_params, decay = 0.999)
-
+        self.forward_ema = ExponentialMovingAverage(forward_params, decay = 0.9999)
+        self.backward_ema = ExponentialMovingAverage(backward_params, decay = 0.9999)
+    
+    def on_train_epoch_start(self) -> None:
         # check if the training direction is the same for the model and the datamodule
         assert self.trainer.datamodule.hparams.training_backward == self.hparams.training_backward, "The training direction must be the same for datamodule and model"
     
     def _has_converged(self) -> bool:
         params = self.hparams
-        max_iters, patience =params.max_iterations, params.patience
+        max_iters, min_iters, patience, curr_iters = params.max_iterations, params.min_iterations, params.patience, params.curr_num_iters
+        has_converged = False
 
         if patience is not None:
             val_losses = params.val_losses
-            if len(val_losses) <= patience:
-                return False
-            prior_losses = val_losses[:-patience]
-            recent_losses = val_losses[-patience:]
-            min_prior_loss = min(prior_losses)
-            return all(l > min_prior_loss for l in recent_losses)
+            if len(val_losses) > patience: 
+                prior_losses = val_losses[:-patience]
+                min_prior_loss = min(prior_losses)
+                recent_losses = val_losses[-patience:]
+                if all(l > min_prior_loss for l in recent_losses):
+                    has_converged = True
         
-        elif max_iters is not None:
-            curr_iters = params.curr_num_iters
+        if max_iters is not None:
+            if curr_iters >= max_iters:
+                has_converged = True
 
-            if isinstance(max_iters, int):
-                return curr_iters >= max_iters
-            
-            if len(max_iters) < self.hparams.DSB_iteration:
-                max_iters = max_iters[-1]
-            else:
-                max_iters = max_iters[self.hparams.DSB_iteration - 1]
+        if min_iters is not None:
+            if curr_iters < min_iters:
+                has_converged = False
 
-            return curr_iters >= max_iters
+        return has_converged
 
     def on_train_batch_start(self, batch : Tensor, batch_idx : int) -> None:
         """
@@ -152,7 +154,7 @@ class StandardDSB(BaseLightningModule):
         return self.backward_model(x, k)
     
     def ornstein_uhlenbeck(self, xk : Tensor, alpha : float, sigma : float) -> Tensor:
-        mu = xk -  alpha * xk
+        mu = xk - alpha * xk
         return mu + sigma * torch.randn_like(xk)
     
     def brownian(self, xk : Tensor, sigma : float) -> Tensor:
@@ -258,7 +260,7 @@ class StandardDSB(BaseLightningModule):
 
         return trajectory if return_trajectory else xk
     
-    def _get_model_optim_and_ema(self, which_model : Literal["forward", "backward"]) -> Tuple[Module, Optimizer, ExponentialMovingAverage]:
+    def _get_model_optim_and_ema(self, is_backward : bool) -> Tuple[Module, Optimizer, ExponentialMovingAverage]:
         """
         Given the model, return the optimizer and the ema
 
@@ -267,12 +269,12 @@ class StandardDSB(BaseLightningModule):
         :return Tuple[Module, Optimizer, ExponentialMovingAverage]: the model, optimizer and ema
         """
 
-        if which_model == "backward":
+        if is_backward:
             return self.backward_model, self.optimizers()[0], self.backward_ema
         else:
             return self.forward_model, self.optimizers()[1], self.forward_ema
     
-    def _optimize(self, loss : Tensor, which_model : Literal["forward", "backward"]) -> None:
+    def _optimize(self, loss : Tensor, is_backward : bool) -> None:
         """
         Given the loss, optimizer and model, optimize the model
         
@@ -281,10 +283,12 @@ class StandardDSB(BaseLightningModule):
         :param Module model: the model
         """
 
-        model, optimizer, ema = self._get_model_optim_and_ema(which_model)
+        model, optimizer, ema = self._get_model_optim_and_ema(is_backward)
         optimizer.zero_grad()
         self.manual_backward(loss)
-        clip_grad_norm_(model.parameters(), self.hparams.max_norm)
+        norm = clip_grad_norm_(model.parameters(), self.hparams.max_norm, norm_type = 2)
+        model_name = "backward" if is_backward else "forward"
+        self.log(f"{model_name}_grad_norm", norm.item())
         optimizer.step()
         ema.update()
 
@@ -315,15 +319,15 @@ class StandardDSB(BaseLightningModule):
         what_batches = torch.arange(batch_size).to(self.device)
         
         sampled_batch = trajectory[ks, what_batches].to(self.device).requires_grad_()
-        
-        if self.hparams.training_backward:
-            loss = self._backward_loss(sampled_batch, ks, x0)
-            self._optimize(loss, "backward")
-            self.log(self._get_loss_name(is_backward = True, is_training = True), loss.item())
-        else:
-            loss = self._forward_loss(sampled_batch, ks, xN)
-            self._optimize(loss, "forward")
-            self.log(self._get_loss_name(is_backward = False, is_training = True), loss.item())
+
+        # calculate loss and accumulate it
+        is_backward = self.hparams.training_backward
+        loss = self._backward_loss(sampled_batch, ks, x0) if is_backward else self._forward_loss(sampled_batch, ks, xN)
+        self.accumulated_loss += loss / self.hparams.accumulate_grad_batches
+        # if we have accumulated enough losses, optimize
+        if self.hparams.curr_num_iters % self.hparams.accumulate_grad_batches == 0:
+            self._optimize(loss, is_backward)
+            self.log(self._get_loss_name(is_backward = is_backward, is_training = True), loss.item(), prog_bar=True)
 
     @torch.no_grad()  
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> Tensor:

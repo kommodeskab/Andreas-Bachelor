@@ -18,7 +18,9 @@ class BaseDSBDM(pl.LightningDataModule):
         super().__init__()
         self.save_hyperparameters(ignore=["start_dataset", "end_dataset"])
         self.hparams["training_backward"] = True
-                
+        
+        self.start_dataset = start_dataset
+        self.end_dataset = end_dataset
         self.start_dataset_train, self.start_dataset_val = random_split(start_dataset, [train_val_split, 1 - train_val_split])
         self.end_dataset_train, self.end_dataset_val = random_split(end_dataset, [train_val_split, 1 - train_val_split])
         

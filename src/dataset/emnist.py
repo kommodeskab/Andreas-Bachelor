@@ -16,6 +16,10 @@ class EMNIST(Dataset):
             transform=transform,
         )
         super().__init__()
+
+    @property
+    def targets(self):
+        return self.emnist_dataset.targets
         
     def __len__(self):
         return len(self.emnist_dataset)
@@ -34,24 +38,21 @@ class EMNISTNoLabel(EMNIST):
         image, _ = super().__getitem__(idx)
         return image
     
-class FilteredMNIST(Dataset):
+class FilteredMNIST(EMNISTNoLabel):
     def __init__(self, digit : int, img_size : int = 32):
-        super().__init__()
-        self.original_dataset = EMNIST(split="digits", img_size=img_size)
-        targets = datasets.EMNIST(root="data", split="digits", download=True).targets
-        self.indices = [i for i, label in enumerate(targets) if label == digit]
+        super().__init__(split="digits", img_size=img_size)
+        self.indices = [i for i, label in enumerate(self.targets) if label == digit]
 
     def __len__(self):
         return len(self.indices)
     
     def __getitem__(self, idx):
-        original_idx = self.indices[idx]
-        image, _ = self.original_dataset[original_idx]
-        return image
+        idx = self.indices[idx]
+        return super().__getitem__(idx)
      
 if __name__ == "__main__":
     dataset = FilteredMNIST(digit=2)
     fig, axs = plt.subplots(1, 5)
     for i, ax in enumerate(axs):
         ax.imshow(dataset[i][0].squeeze() * 0.5 + 0.5, cmap="gray")
-    plt.savefig("filtered_mnist.png")
+    plt.savefig("data/samples/filtered_mnist.png")

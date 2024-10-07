@@ -61,3 +61,23 @@ def get_traj_fig(trajectory : torch.Tensor, title : str, num_points : int):
     fig.suptitle(title, fontsize = 20)
     
     return fig
+
+def get_grid_fig(left_images : torch.Tensor, right_images : torch.Tensor, num_rows : int) -> plt.Figure:
+    fig, axs = plt.subplots(num_rows, 2 * num_rows + 1, figsize=(20, 10))
+    cmap = "gray" if left_images[0].shape[2] == 1 else None
+
+    for i in range(num_rows ** 2):
+        ax = axs[i // num_rows, i % num_rows]
+        ax.imshow(left_images[i], cmap = cmap)
+
+        ax = axs[i // num_rows, (i % num_rows) + num_rows + 1]
+        ax.imshow(right_images[i], cmap = cmap)
+
+    for ax in axs.flatten():
+        ax.axis("off")
+
+    axs[0, 0].set_title("Original", fontsize=16)
+    axs[0, num_rows + 1].set_title("Generated", fontsize=16)
+
+    plt.tight_layout()
+    return fig

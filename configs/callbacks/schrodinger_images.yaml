@@ -4,3 +4,4 @@ defaults:
   - plotgammaschedule
   - richmodelsummary
   - plotimages
+  - image_grid

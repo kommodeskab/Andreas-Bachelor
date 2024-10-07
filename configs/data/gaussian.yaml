@@ -1,3 +1,0 @@
-_target_: src.data_modules.OT_datamodules.GaussianSchrodingerDM
-batch_size: 64
-size: 5000

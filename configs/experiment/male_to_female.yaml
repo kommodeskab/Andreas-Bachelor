@@ -1,10 +1,10 @@
 # @package _global_
 defaults:
   - override /trainer: gpu
-  - override /data: one_to_seven
+  - override /data: male_to_female_data
   - override /callbacks: schrodinger_images
-  - override /model: twod
+  - override /model: big_images
   - override /logger: default
 
-project_name: 'Bachelor'
+project_name: 'male_to_female'
 task_name: 'schrodinger_images'

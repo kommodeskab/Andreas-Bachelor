@@ -4,32 +4,22 @@ import matplotlib.pyplot as plt
 import random
 
 class NormalDataset(Dataset):
-    def __init__(self, mu, sigma, size : int = 1000):
-        super().__init__()
-        self.size = size
-        
-        if isinstance(sigma, int):
-            sigma = torch.ones_like(mu) * sigma
-        
-        self.values = torch.distributions.Normal(mu, sigma).sample((size, ))
-        
-    def __len__(self):
-        return self.size
-    
-    def __getitem__(self, index):
-        return self.values[index]
-
-class StandardNormalDataset(Dataset):
-    def __init__(self, dim : int, size : int = 1000):
+    def __init__(self, mu : int, sigma : int, dim : int, size : int = 1000):
         super().__init__()
         self.dim = dim
         self.size = size
-    
+        self.mu = mu
+        self.sigma = sigma
+        
     def __len__(self):
         return self.size
     
     def __getitem__(self, index):
-        return torch.randn(self.dim)
+        return self.mu + self.sigma * torch.randn(self.dim)
+
+class StandardNormalDataset(NormalDataset):
+    def __init__(self, dim : int, size : int = 1000):
+        super().__init__(0, 1, dim, size)
     
 class Line2dDataset(Dataset):
     def __init__(self, size : int = 1000):
