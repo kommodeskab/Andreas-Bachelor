@@ -3,6 +3,7 @@
 /data
 /multirun
 /.vscode
+inception-2015-12-05.pt
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

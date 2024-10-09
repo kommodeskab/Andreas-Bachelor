@@ -21,7 +21,16 @@ min_gamma: 0.01
 num_steps: 100
 max_iterations: 5000
 strict_gammas: True
-lr: 0.001
-lr_factor: 0.5
-lr_patience: 5
 max_norm: 1
+
+optimizer:
+  _target_: torch.optim.Adam
+  _partial_: True
+  lr: 0.001
+
+scheduler:
+  _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+  _partial_: True
+  mode: 'min'
+  factor: 0.5
+  patience: 3

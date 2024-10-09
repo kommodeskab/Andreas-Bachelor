@@ -1,0 +1,2 @@
+marginal_distributions:
+  _target_: src.callbacks.MarginalDistributionsImagesCB

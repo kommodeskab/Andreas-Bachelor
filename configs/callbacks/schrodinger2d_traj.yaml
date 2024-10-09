@@ -1,4 +1,4 @@
 schrodinger2d_traj:
   _target_: src.callbacks.Plot2dCB
-  num_points: 2000
+  num_points: 4000
   num_trajectories: 5

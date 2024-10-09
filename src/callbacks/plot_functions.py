@@ -28,7 +28,9 @@ def get_image_fig(trajectory : torch.Tensor, title : str):
             if j == 2:
                 ax[i, j].set_title(f"Step {traj_idx[i]}", fontsize = 20)
 
-    fig.suptitle(title, fontsize = 40)
+    fig.suptitle(title, fontsize = 20)
+    plt.tight_layout()
+
     return fig
 
 def get_traj_fig(trajectory : torch.Tensor, title : str, num_points : int):
@@ -59,6 +61,7 @@ def get_traj_fig(trajectory : torch.Tensor, title : str, num_points : int):
         ax[i].set_ylim(min_y, max_y)
     
     fig.suptitle(title, fontsize = 20)
+    plt.tight_layout()
     
     return fig
 

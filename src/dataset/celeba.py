@@ -3,8 +3,9 @@ from torchvision.datasets import CelebA
 from torchvision.transforms import ToTensor, Resize, Compose
 import torch
 import matplotlib.pyplot as plt
+from .basedataset import BaseDataset
 
-class CelebADataset(Dataset):
+class CelebADataset(BaseDataset):
     def __init__(self, img_size : int = 32, download : bool = False):
         super().__init__()
         

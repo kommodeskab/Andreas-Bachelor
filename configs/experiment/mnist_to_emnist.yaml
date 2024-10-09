@@ -3,8 +3,58 @@ defaults:
   - override /trainer: gpu
   - override /data: mnist_to_emnist
   - override /callbacks: schrodinger_images
-  - override /model: images
+  - override /model: big_images
   - override /logger: default
 
 project_name: 'mnist_to_emnist'
 task_name: 'test'
+
+trainer:
+  val_check_interval: 1000
+  log_every_n_steps: 20
+  max_epochs: 199
+
+model:
+  max_gamma: 0.02
+  min_gamma: 0.02
+  num_steps: 50
+  patience: 5
+  max_iterations: 10000
+  strict_gammas: True
+  max_norm: 3
+  initial_forward_sampling: "ornstein_uhlenbeck"
+
+  forward_model:
+    in_channels: 1
+    out_channels: 1
+    block_out_channels: [64, 64, 64]
+    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
+  
+  backward_model:
+    in_channels: 1
+    out_channels: 1
+    block_out_channels: [64, 64, 64]
+    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
+
+  optimizer:
+    _target_: torch.optim.Adam
+    _partial_: True
+    lr: 0.0001
+
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: True
+    mode: 'min'
+    factor: 0.5
+    patience: 3
+
+data:
+  cache_num_iters: 400
+  batch_size: 256
+  start_dataset:
+    img_size: 32
+  end_dataset:
+    img_size: 32
+  num_workers: 8

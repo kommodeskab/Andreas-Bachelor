@@ -1,9 +1,9 @@
 from torchvision import datasets, transforms
 from torch.utils.data import Dataset
 import matplotlib.pyplot as plt
-from tqdm import tqdm
+from .basedataset import BaseDataset
 
-class EMNIST(Dataset):
+class EMNIST(BaseDataset):
     def __init__(self, split : str, img_size : int = 32):
         transform = transforms.Compose([
                     transforms.ToTensor(),

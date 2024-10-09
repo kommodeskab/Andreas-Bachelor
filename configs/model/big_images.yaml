@@ -1,4 +1,4 @@
-_target_: src.lightning_modules.TRDSB
+_target_: src.lightning_modules.FRDSB
 
 forward_model:
   _target_: src.networks.unets.UNet2D
@@ -9,7 +9,7 @@ forward_model:
   down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
   up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"] # remember to change this (use attention)
   block_out_channels: [64, 128, 256]
-  dropout: 0.2
+  dropout: 0.0
 
 backward_model:
   _target_: src.networks.unets.UNet2D
@@ -17,18 +17,15 @@ backward_model:
   in_channels: 3
   out_channels: 3
   layers_per_block: 2
-  down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
-  up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+  down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
+  up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"] # remember to change this (use attention)
   block_out_channels: [64, 128, 256]
-  dropout: 0.2
+  dropout: 0.0
 
 max_gamma: 0.01
 min_gamma: 0.01
 num_steps: 100
 patience: 10
 strict_gammas: True
-lr: 0.001
-lr_factor: 0.5
-lr_patience: 5
 max_norm: 1
 initial_forward_sampling: "ornstein_uhlenbeck"

@@ -113,17 +113,21 @@ class ResMLP(torch.nn.Module):
         self.net = torch.nn.ModuleList(net)
         
     
-    def forward(self, x, t):
+    def forward(self, x : torch.Tensor, t : torch.Tensor):
+        original_shape = x.shape
+        x = x.flatten(1)
 
         for l in range(self.num_layers - 1):
             x = self.net[l](x, t)
         x = self.net[-1](x)
-            
+        
+        x = x.view(original_shape)
+
         return x
     
 if __name__ == "__main__":
-    net = ResMLP(2, 2, 128, 3, n_cond=100)
-    x = torch.randn(10, 2)
-    t = torch.randint(0, 100, (10, ))
+    net = ResMLP(256, 256, 128, 3, n_cond=100)
+    x = torch.randn(32, 1,16,16)
+    t = torch.randint(0, 100, (32, ))
     out = net(x, t)
     print(out.shape)

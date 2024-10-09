@@ -11,25 +11,47 @@ task_name: 'test'
 
 trainer:
   val_check_interval: 500
+  log_every_n_steps: 20
+  max_epochs: 100
+
+callbacks:
+  mmc:
+    _target_: src.callbacks.MMDCB
+    num_samples: 1000
+  fid:
+    _target_: src.callbacks.CalculateFID
+    num_samples: 1000
+  initial_diffusion:
+    _target_: src.callbacks.TestInitialDiffusionCB
+    num_rows: 5
 
 model:
-  max_gamma: 0.02
-  min_gamma: 0.02
-  num_steps: 50
+  max_gamma: 0.025
+  min_gamma: 0.025
+  num_steps: 40
   patience: 5
-  max_iterations: 5000
+  max_iterations: 2000
   strict_gammas: True
-  lr: 0.001
-  accumulate_grad_batches: 1
-  lr_factor: 0.5
-  lr_patience: 3
-  max_norm: 30000
+  max_norm: 0.5
   initial_forward_sampling: "ornstein_uhlenbeck"
 
+  optimizer:
+    _target_: torch.optim.Adam
+    _partial_: True
+    lr: 0.00005
+
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: True
+    mode: 'min'
+    factor: 0.5
+    patience: 3
+
 data:
-  cache_num_iters: 100
+  cache_num_iters: 40
   batch_size: 256
   start_dataset:
     img_size: 16
   end_dataset:
     img_size: 16
+  num_workers: 8

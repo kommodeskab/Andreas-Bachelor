@@ -28,9 +28,5 @@ num_steps: 50
 patience: 5
 max_iterations: 20000
 strict_gammas: True
-lr: 0.001
-accumulate_grad_batches: 1
-lr_factor: 0.5
-lr_patience: 3
 max_norm: 2
 initial_forward_sampling: "ornstein_uhlenbeck"
