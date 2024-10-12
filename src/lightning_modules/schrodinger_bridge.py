@@ -20,10 +20,10 @@ class StandardDSB(BaseLightningModule):
         num_steps : int,
         patience : int | None = None,
         max_iterations : int | None = None,
+        max_dsb_iterations : int | None = 20,
         min_iterations : int = 1,
-        strict_gammas : bool = True,
         max_norm : float = 1,
-        initial_forward_sampling: Literal["ornstein_uhlenbeck", "brownian"] | None = "ornstein_uhlenbeck",
+        initial_forward_sampling: Literal["diffuse"] | None = None,
     ):
         """
         Initializes the StandardDSB model
@@ -40,19 +40,27 @@ class StandardDSB(BaseLightningModule):
         })
 
         assert max_gamma >= min_gamma, f"{max_gamma = } must be greater than {min_gamma = }"
+        
+        gammas = torch.zeros(num_steps)
+        half_steps = num_steps // 2
 
-        first_steps = num_steps // 2
-        gammas = torch.zeros(num_steps + 1)
-        gammas[1:first_steps + 1] = torch.linspace(min_gamma, max_gamma, first_steps)
-        gammas[first_steps + 1:] = torch.linspace(max_gamma, min_gamma, num_steps - first_steps)
+        if self.hparams.num_steps % 2 == 0:
+            gammas[:half_steps] = torch.linspace(min_gamma, max_gamma, half_steps)
+            gammas[half_steps:] = torch.linspace(max_gamma, min_gamma, half_steps)
+        else:
+            gammas[:half_steps + 1] = torch.linspace(min_gamma, max_gamma, half_steps + 1)
+            gammas[half_steps:] = torch.flip(gammas[:half_steps + 1], [0])
+
+        gammas = torch.cat((torch.tensor([0.0]), gammas)) # add 0 to make the correct indexing
+        gammas_sum = gammas.sum()
+        gammas = gammas / gammas_sum
         self.gammas = gammas
         
-        if strict_gammas:
-            gammas_sum = gammas.sum().item()
-            assert abs(1 - gammas_sum) < 1e-3, f"The sum of gammas must be equal to 1, but got {gammas_sum = }"
+        gammas_sum = gammas.sum()
+        assert abs(1 - gammas_sum.item()) <= 1e-2, f"The sum of gammas must be equal to 1, but got {gammas_sum = }"
         
-        self.forward_model : Callable[[Tensor, Tensor], Tensor] = forward_model
-        self.backward_model : Callable[[Tensor, Tensor], Tensor] = backward_model
+        self.forward_model : torch.nn.Module = forward_model
+        self.backward_model : torch.nn.Module = backward_model
 
         self.partial_optimizer = optimizer
         self.partial_scheduler = scheduler
@@ -76,14 +84,17 @@ class StandardDSB(BaseLightningModule):
         max_iters, min_iters, patience, curr_iters = params.max_iterations, params.min_iterations, params.patience, params.curr_num_iters
         has_converged = False
 
+        if self.hparams.max_dsb_iterations is not None:
+            if self.hparams.DSB_iteration > self.hparams.max_dsb_iterations:
+                return True
+
         if patience is not None:
             val_losses = params.val_losses
             if len(val_losses) > patience: 
                 prior_losses = val_losses[:-patience]
                 min_prior_loss = min(prior_losses)
-                threshold = min_prior_loss * 0.99 # the recent losses must be at least 1% smaller than the minimum prior loss
                 recent_losses = val_losses[-patience:]
-                if all(l > threshold for l in recent_losses):
+                if all(l > min_prior_loss for l in recent_losses):
                     has_converged = True
         
         if max_iters is not None:
@@ -155,26 +166,18 @@ class StandardDSB(BaseLightningModule):
         """
         return self.backward_model(x, k)
     
-    def ornstein_uhlenbeck(self, xk : Tensor, alpha : float, sigma : float) -> Tensor:
-        mu = xk - alpha * xk
+    def ornstein_uhlenbeck(self, xk : Tensor, k : int, alpha : float = 1) -> Tensor:
+        mu = xk - alpha * self.gammas[k + 1] * xk
+        sigma = torch.sqrt(2 * self.gammas[k + 1])
         return mu + sigma * torch.randn_like(xk)
     
-    def brownian(self, xk : Tensor, sigma : float) -> Tensor:
-        # brownian motion is a special case of the ornstein-uhlenbeck process with alpha = 0
-        return self.ornstein_uhlenbeck(xk = xk, alpha = 0, sigma = sigma)
     
     def _initial_go_forward(self, xk : Tensor, k : int) -> Tensor:
-        sigma = torch.sqrt(2 * self.gammas[k + 1])
-
         if self.hparams.initial_forward_sampling is None:
             return self.go_forward(xk, k)
         
-        if self.hparams.initial_forward_sampling == "ornstein_uhlenbeck":
-            alpha = self.gammas[k + 1]
-            return self.ornstein_uhlenbeck(xk, alpha, sigma)
-        
-        if self.hparams.initial_forward_sampling == "brownian":
-            return self.brownian(xk, sigma) 
+        if self.hparams.initial_forward_sampling == "diffuse":
+            return self.ornstein_uhlenbeck(xk, k, alpha=3)
         
         raise ValueError(f"Invalid initial_forward_sampling: {self.hparams.initial_forward_sampling}")
         
@@ -246,6 +249,7 @@ class StandardDSB(BaseLightningModule):
         trajectory = torch.zeros(self.hparams.num_steps + 1, *x_start.size()).to(self.device)
         
         if forward:
+            self.forward_model.eval()
             xk = x_start
             trajectory[0] = xk
             for k in range(self.hparams.num_steps): # 0, 1, 2, ..., num_steps - 1
@@ -257,6 +261,7 @@ class StandardDSB(BaseLightningModule):
                 xk = xk_plus_one
 
         else:
+            self.backward_model.eval()
             xk_plus_one = x_start
             trajectory[-1] = xk_plus_one
             for k in reversed(range(self.hparams.num_steps)): # num_steps - 1, num_steps - 2, ..., 1, 0
@@ -292,12 +297,13 @@ class StandardDSB(BaseLightningModule):
     
     def training_step(self, batch : Tensor, batch_idx : int) -> Tensor:
         self.hparams.curr_num_iters += 1
+        training_backward = self.hparams.training_backward
         
         # using custom "cachedataloader" to deliver batches
         # therefore, most batches will be 0 (meaning we need to use cache)
         # if the batch is not 0, and therefore a tensor, then we create a new cache
         if not isinstance(batch, int):
-            self.cache = self.sample(batch, forward = self.hparams.training_backward, return_trajectory = True)
+            self.cache = self.sample(batch, forward = training_backward, return_trajectory = True)
         
         # trajectory.shape = (num_steps + 1, batch_size, *x_start.size())
         trajectory = self.cache
@@ -306,31 +312,31 @@ class StandardDSB(BaseLightningModule):
         batch_size = trajectory.size(1)
         
         ks = torch.randint(0, self.hparams.num_steps, (batch_size,)).to(self.device)
-        if self.hparams.training_backward:
+        if training_backward:
             ks += 1
         all_samples = torch.arange(batch_size).to(self.device)
         sampled_batch = trajectory[ks, all_samples].to(self.device)
 
         # -- OPTIMIZATION --
         # get model, optimizer and ema
-        is_backward = self.hparams.training_backward
-        model, optimizer, ema = self._get_model_optim_and_ema(is_backward)
+        model, optimizer, ema = self._get_model_optim_and_ema(training_backward)
+        model.train()
 
         # calculate loss and do backward pass
         optimizer.zero_grad()
-        loss = self._backward_loss(sampled_batch, ks, x0) if is_backward else self._forward_loss(sampled_batch, ks, xN)
-        self.manual_backward(loss, retain_graph = True)
+        loss = self._backward_loss(sampled_batch, ks, x0) if training_backward else self._forward_loss(sampled_batch, ks, xN)
+        self.manual_backward(loss)
 
         # clip gradients and log gradients
         self.clip_gradients(optimizer, self.hparams.max_norm, "norm")
         norm = grad_norm(model, norm_type=2).get('grad_2.0_norm_total', 0)
-        model_name = "backward_model" if is_backward else "forward_model"
+        model_name = "backward_model" if training_backward else "forward_model"
         self.log(f"{model_name}_grad_norm", norm, prog_bar=True)
 
         # step the optimizer and update the ema
         optimizer.step()
         ema.update()
-        self.log(self._get_loss_name(is_backward = is_backward, is_training = True), loss.item(), prog_bar=True)
+        self.log(self._get_loss_name(is_backward = training_backward, is_training = True), loss.item(), prog_bar=True)
 
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> Tensor:
         if self.hparams.training_backward and dataloader_idx == 0:

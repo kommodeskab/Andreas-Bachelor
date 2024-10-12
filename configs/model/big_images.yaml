@@ -7,7 +7,7 @@ forward_model:
   out_channels: 3
   layers_per_block: 2
   down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-  up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"] # remember to change this (use attention)
+  up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
   block_out_channels: [64, 128, 256]
   dropout: 0.0
 
@@ -18,14 +18,9 @@ backward_model:
   out_channels: 3
   layers_per_block: 2
   down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-  up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"] # remember to change this (use attention)
+  up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
   block_out_channels: [64, 128, 256]
   dropout: 0.0
 
-max_gamma: 0.01
-min_gamma: 0.01
-num_steps: 100
 patience: 10
-strict_gammas: True
 max_norm: 1
-initial_forward_sampling: "ornstein_uhlenbeck"

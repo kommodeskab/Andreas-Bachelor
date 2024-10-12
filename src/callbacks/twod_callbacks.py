@@ -23,22 +23,21 @@ class Plot2dCB(pl.Callback):
         self.x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_train, self.num_points).to(pl_module.device)
         self.xN = get_batch_from_dataset(trainer.datamodule.end_dataset_train, self.num_points).to(pl_module.device)
         trajectory = pl_module.sample(self.x0, forward=True, return_trajectory=True).cpu()
-        fig = get_traj_fig(trajectory, "Initial forward trajectory", num_points = self.num_points)
-        logger.log_image("Initial forward trajectory", wandb.Image(fig))
+        fig = get_traj_fig(trajectory, num_points = self.num_points)
+        logger.log_image("Initial forward trajectory", [wandb.Image(fig)], caption=["Initial forward trajectory"])
         
     def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         iteration = pl_module.hparams.DSB_iteration
         logger : WandbLogger = trainer.logger
-        
-        if pl_module.hparams.training_backward:
-            trajectory = pl_module.sample(self.xN, forward = False, return_trajectory=True).cpu()
-            fig = get_traj_fig(trajectory, f"Backward trajectory (Iteration: {iteration})", num_points = self.num_points)
-            logger.log_image(f"iteration_{iteration}", wandb.Image(fig), step=trainer.global_step, caption="Backward trajectory")
-        else:
-            trajectory = pl_module.sample(self.x0, forward = True, return_trajectory=True).cpu()
-            fig = get_traj_fig(trajectory, f"Forward trajectory (Iteration: {iteration})", num_points = self.num_points)
-            logger.log_image(f"iteration_{iteration}", wandb.Image(fig), step=trainer.global_step, caption="Forward trajectory")
+
+        is_backward = pl_module.hparams.training_backward
+        title = "Backward" if is_backward else "Forward"
+        original_xs = self.xN if is_backward else self.x0
+
+        trajectory = pl_module.sample(original_xs, forward = not is_backward, return_trajectory=True).cpu()
+        fig = get_traj_fig(trajectory, num_points = self.num_points)
+        logger.log_image(f"iteration_{iteration}/{title} trajectory", [wandb.Image(fig)], step=trainer.global_step)
 
         plt.close("all")
         
@@ -46,6 +45,7 @@ class GaussianTestCB(pl.Callback):
     def __init__(self, num_samples : int = 1000):
         super().__init__()
         self.num_samples = num_samples
+        wandb.define_metric("benchmarks/KL-divergence", step_metric="Iteration")
     
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         self.xN = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_samples).to(pl_module.device)
@@ -53,6 +53,7 @@ class GaussianTestCB(pl.Callback):
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         logger : WandbLogger = trainer.logger
+        iteration = pl_module.hparams.DSB_iteration
 
         if not pl_module.hparams.training_backward:
             x0_pred = pl_module.sample(self.xN, forward = False)
@@ -61,4 +62,4 @@ class GaussianTestCB(pl.Callback):
             # calculate the kl divergence assuming normal distributions
             kl_divergence : torch.Tensor = 0.5 * (torch.log(real_sigma / pred_sigma) + (pred_sigma ** 2 + (pred_mu - real_mu) ** 2) / real_sigma - 1)
             kl_divergence = kl_divergence.sum().item()
-            logger.log_metrics({"benchmarks/KL-divergence": kl_divergence}, step=trainer.global_step)
+            logger.log_metrics({"benchmarks/KL-divergence": kl_divergence, "Iteration": iteration})

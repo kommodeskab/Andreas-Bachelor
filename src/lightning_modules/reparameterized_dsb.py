@@ -45,6 +45,12 @@ class TRDSB(BaseReparameterizedDSB):
         loss = self.mse(x0_pred, x0)
         return loss
     
+    def pred_x0(self, xk : Tensor, ks : Tensor) -> Tensor:
+        return self.backward_call(xk, ks)
+    
+    def pred_xN(self, xk : Tensor, ks : Tensor) -> Tensor:
+        return self.forward_call(xk, ks)
+    
 class FRDSB(BaseReparameterizedDSB):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -84,6 +90,16 @@ class FRDSB(BaseReparameterizedDSB):
         pred = self.backward_call(xk, ks)
         loss = self.mse(target, pred)
         return loss
+    
+    def pred_x0(self, xk : Tensor, ks : Tensor) -> Tensor:
+        shape_for_constant = self._get_shape_for_constant(xk)
+        gammas_bar = self.gammas_bar.to(self.device)[ks].view(shape_for_constant)
+        return xk - gammas_bar * self.backward_call(xk, ks)
+    
+    def pred_xN(self, xk : Tensor, ks : Tensor) -> Tensor:
+        shape_for_constant = self._get_shape_for_constant(xk)
+        gammas_bar = self.gammas_bar.to(self.device)[ks].view(shape_for_constant)
+        return xk + (1 - gammas_bar) * self.forward_call(xk, ks)
     
     def _get_shape_for_constant(self, x : Tensor) -> list[int]:
         return [-1] + [1] * (x.dim() - 1)

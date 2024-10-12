@@ -16,11 +16,7 @@ backward_model:
   num_layers: 3
   n_cond: 101
 
-max_gamma: 0.01
-min_gamma: 0.01
-num_steps: 100
 max_iterations: 5000
-strict_gammas: True
 max_norm: 1
 
 optimizer:
@@ -33,4 +29,4 @@ scheduler:
   _partial_: True
   mode: 'min'
   factor: 0.5
-  patience: 3
+  patience: 5

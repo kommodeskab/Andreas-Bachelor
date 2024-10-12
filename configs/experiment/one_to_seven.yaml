@@ -10,7 +10,7 @@ project_name: 'one_to_seven'
 task_name: 'test'
 
 trainer:
-  val_check_interval: 500
+  val_check_interval: 400
   log_every_n_steps: 20
   max_epochs: 100
 
@@ -18,27 +18,44 @@ callbacks:
   mmc:
     _target_: src.callbacks.MMDCB
     num_samples: 1000
-  fid:
-    _target_: src.callbacks.CalculateFID
-    num_samples: 1000
   initial_diffusion:
     _target_: src.callbacks.TestInitialDiffusionCB
     num_rows: 5
+  sanity_check:
+    _target_: src.callbacks.SanityCheckImagesCB
 
 model:
-  max_gamma: 0.025
-  min_gamma: 0.025
-  num_steps: 40
+  _target_: src.lightning_modules.TRDSB
+
+  max_gamma: 0.1
+  min_gamma: 0.001
+  num_steps: 30
   patience: 5
-  max_iterations: 2000
-  strict_gammas: True
-  max_norm: 0.5
-  initial_forward_sampling: "ornstein_uhlenbeck"
+  max_iterations: 1600
+  max_norm: 3
+  initial_forward_sampling: "diffuse"
+
+  forward_model:
+    layers_per_block: 2
+    sample_size: [32, 32]
+    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
+    block_out_channels: [32, 32, 32]
+    dropout: 0.1
+  
+  backward_model:
+    layers_per_block: 2
+    sample_size: [32, 32]
+    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
+    block_out_channels: [32, 32, 32]
+    dropout: 0.1
+
 
   optimizer:
     _target_: torch.optim.Adam
     _partial_: True
-    lr: 0.00005
+    lr: 0.001
 
   scheduler:
     _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
@@ -48,10 +65,12 @@ model:
     patience: 3
 
 data:
-  cache_num_iters: 40
+  cache_num_iters: 50
   batch_size: 256
   start_dataset:
-    img_size: 16
+    digit: 8
+    img_size: 32
   end_dataset:
-    img_size: 16
+    digit: 0
+    img_size: 32
   num_workers: 8

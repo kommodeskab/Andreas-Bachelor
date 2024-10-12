@@ -10,7 +10,7 @@ project_name: 'chess_to_square'
 task_name: 'test'
 
 trainer:
-  val_check_interval: 200
+  val_check_interval: 2000
   log_every_n_steps: 20
 
 data:
@@ -22,15 +22,27 @@ callbacks:
     num_samples: 1000
 
 model:
+  _target_: src.lightning_modules.FRDSB
   forward_model:
     n_cond: 101
 
   backward_model:
     n_cond: 101
 
-  max_gamma: 0.025
-  min_gamma: 0.025
-  num_steps: 40
-  max_iterations: 3000
-  strict_gammas: True
-  max_norm: 1
+  max_gamma: 0.1
+  min_gamma: 0.001
+  num_steps: 50
+  max_iterations: 32000
+  max_norm: 3
+
+  optimizer:
+    _target_: torch.optim.Adam
+    _partial_: True
+    lr: 0.001
+
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: True
+    mode: 'min'
+    factor: 0.5
+    patience: 5

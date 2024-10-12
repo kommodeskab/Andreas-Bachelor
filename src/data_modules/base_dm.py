@@ -32,10 +32,9 @@ class BaseDSBDM(pl.LightningDataModule):
         }
     
     def train_dataloader(self):
-        if self.hparams.training_backward:
-            return CacheDataLoader(dataset = self.start_dataset_train, cache_num_iters = self.hparams.cache_num_iters, shuffle = True, **self.loader_kwargs)
-        else:
-            return CacheDataLoader(dataset = self.end_dataset_train, cache_num_iters = self.hparams.cache_num_iters, shuffle = True, **self.loader_kwargs)
+        training_backward = self.hparams.training_backward
+        dataset = self.start_dataset_train if training_backward else self.end_dataset_train
+        return CacheDataLoader(dataset = dataset, cache_num_iters = self.hparams.cache_num_iters, shuffle = True, **self.loader_kwargs)
         
     def val_dataloader(self):
         return [

@@ -9,7 +9,7 @@ forward_model:
   down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
   up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
   block_out_channels: [32, 32, 32]
-  dropout: 0.2
+  dropout: 0.1
 
 backward_model:
   _target_: src.networks.unets.UNet2D
@@ -20,13 +20,8 @@ backward_model:
   down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
   up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
   block_out_channels: [32, 32, 32]
-  dropout: 0.2
+  dropout: 0.1
 
-max_gamma: 0.02
-min_gamma: 0.02
-num_steps: 50
 patience: 5
 max_iterations: 20000
-strict_gammas: True
 max_norm: 2
-initial_forward_sampling: "ornstein_uhlenbeck"

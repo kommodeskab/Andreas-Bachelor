@@ -5,16 +5,15 @@ import matplotlib
 
 matplotlib.use('Agg')
 
-def get_gamma_fig(gammas, ylabel, title):
+def get_gamma_fig(gammas, ylabel):
     ts = range(1, len(gammas)+1)
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(ts, gammas)
     ax.set_xlabel("k")
     ax.set_ylabel(ylabel)
-    ax.set_title(title)
     return fig
 
-def get_image_fig(trajectory : torch.Tensor, title : str):
+def get_image_fig(trajectory : torch.Tensor):
     traj_len = trajectory.shape[0]
     traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
     cmap = "gray" if trajectory.size(2) == 1 else None
@@ -22,18 +21,17 @@ def get_image_fig(trajectory : torch.Tensor, title : str):
     fig, ax = plt.subplots(5, 5, figsize=(20, 20))
     for i in range(5): 
         for j in range(5): 
-            img = trajectory[traj_idx[i], j, :, :, :].permute(1, 2, 0).cpu()
+            img = trajectory[traj_idx[i], j, :, :, :].permute(1, 2, 0).numpy()
             ax[i, j].imshow(img, cmap = cmap)
             ax[i, j].axis("off")
             if j == 2:
                 ax[i, j].set_title(f"Step {traj_idx[i]}", fontsize = 20)
 
-    fig.suptitle(title, fontsize = 20)
     plt.tight_layout()
 
     return fig
 
-def get_traj_fig(trajectory : torch.Tensor, title : str, num_points : int):
+def get_traj_fig(trajectory : torch.Tensor, num_points : int):
     random_points = random.sample(range(num_points), 5)
     traj_len = trajectory.shape[0]
     traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
@@ -60,7 +58,6 @@ def get_traj_fig(trajectory : torch.Tensor, title : str, num_points : int):
         ax[i].set_xlim(min_x, max_x)
         ax[i].set_ylim(min_y, max_y)
     
-    fig.suptitle(title, fontsize = 20)
     plt.tight_layout()
     
     return fig

@@ -14,7 +14,7 @@ trainer:
   log_every_n_steps: 20
 
 data:
-  cache_num_iters: 50
+  cache_num_iters: 10
 
 callbacks:
   mmc:
@@ -28,9 +28,10 @@ model:
   backward_model:
     n_cond: 101
 
-  max_gamma: 0.025
-  min_gamma: 0.025
-  num_steps: 40
-  max_iterations: 3000
+  max_gamma: 0.01
+  min_gamma: 0.01
+  num_steps: 100
+  max_iterations: 2000
   strict_gammas: True
   max_norm: 1
+  initial_forward_sampling: "ornstein_uhlenbeck"

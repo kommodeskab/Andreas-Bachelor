@@ -1,3 +1,4 @@
 fid:
   _target_: src.callbacks.CalculateFID
   num_samples: 1000
+  ema_scope: True
