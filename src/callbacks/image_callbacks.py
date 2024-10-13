@@ -19,8 +19,6 @@ class MarginalDistributionsImagesCB(pl.Callback):
         self.num_rows = num_rows
 
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
-        logger : WandbLogger = trainer.logger
-
         x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_rows ** 2, shuffle=True).to(pl_module.device)
         xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, self.num_rows ** 2, shuffle=True).to(pl_module.device)
         x0 = (x0 + 1) / 2
@@ -43,7 +41,7 @@ class MarginalDistributionsImagesCB(pl.Callback):
         for ax in axs.flat:
             ax.axis("off")
         
-        logger.log_image(
+        pl_module.logger.log_image(
             "Marginal distributions",
             [wandb.Image(x0_fig), wandb.Image(xN_fig)],
             caption = ["Samples from data distribution", "Samples from prior distribution"],
@@ -61,7 +59,6 @@ class PlotImageSamplesCB(pl.Callback):
         pl_module.eval()
         iteration = pl_module.hparams.DSB_iteration
         device = pl_module.device
-        logger : WandbLogger = trainer.logger
 
         is_backward = pl_module.hparams.training_backward
         title = "Backward" if is_backward else "Forward"
@@ -76,7 +73,7 @@ class PlotImageSamplesCB(pl.Callback):
         sampled_xs = sampled_xs.permute(0, 2, 3, 1).cpu().detach().numpy()
 
         fig = get_grid_fig(original_xs, sampled_xs, self.num_rows)
-        logger.log_image(f"iteration_{iteration}/{title} samples", [wandb.Image(fig)], step=trainer.global_step)
+        pl_module.logger.log_image(f"iteration_{iteration}/{title} samples", [wandb.Image(fig)], step=trainer.global_step)
         plt.close("all")
 
 class SanityCheckImagesCB(pl.Callback):
@@ -119,9 +116,8 @@ class SanityCheckImagesCB(pl.Callback):
             ax.axis("off")
 
         plt.tight_layout()
-        logger : WandbLogger = trainer.logger
         title = "Backward" if training_backward else "Forward"
-        logger.log_image(f"iteration_{iteration}/{title} sanity check", [wandb.Image(fig)], step=trainer.global_step)
+        pl_module.logger.log_image(f"iteration_{iteration}/{title} sanity check", [wandb.Image(fig)], step=trainer.global_step)
         plt.close("all")
     
 class PlotImagesCB(pl.Callback):
@@ -135,20 +131,18 @@ class PlotImagesCB(pl.Callback):
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         device = pl_module.device
-        logger : WandbLogger = trainer.logger
         self.x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
         self.xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
         trajectory = pl_module.sample(self.x0, forward = True, return_trajectory = True, clamp=True, ema_scope=self.ema_scope).cpu()
         trajectory = (trajectory + 1) / 2
         
         fig = get_image_fig(trajectory)
-        logger.log_image("Initial forward trajectory", [wandb.Image(fig)])
+        pl_module.logger.log_image("Initial forward trajectory", [wandb.Image(fig)])
         plt.close("all")
     
     def on_validation_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         iteration = pl_module.hparams.DSB_iteration
-        logger : WandbLogger = trainer.logger
 
         is_backward = pl_module.hparams.training_backward
         title = "Backward" if is_backward else "Forward"
@@ -157,7 +151,7 @@ class PlotImagesCB(pl.Callback):
         trajectory = pl_module.sample(original_xs, forward = not is_backward, return_trajectory = True, clamp=True, ema_scope=self.ema_scope).cpu()
         trajectory = (trajectory + 1) / 2
         fig = get_image_fig(trajectory)
-        logger.log_image(f"iteration_{iteration}/{title} trajectory", [wandb.Image(fig)], step=trainer.global_step)
+        pl_module.logger.log_image(f"iteration_{iteration}/{title} trajectory", [wandb.Image(fig)], step=trainer.global_step)
         plt.close("all")
 
         video_length_seconds = 5
@@ -172,7 +166,7 @@ class PlotImagesCB(pl.Callback):
             if video.shape[1] == 1:
                 video = video.repeat(1, 3, 1, 1)
             video = (video * 255).numpy().astype("uint8")
-            logger.log_video(f"Videos", [video], step=trainer.global_step, caption=[f"Trajectory {i}"], fps=[video_fps])
+            pl_module.logger.log_video(f"Videos", [video], step=trainer.global_step, caption=[f"Trajectory {i}"], fps=[video_fps])
 
 class TestInitialDiffusionCB(pl.Callback):
     def __init__(self, num_rows : int = 5, ema_scope : bool = True):
@@ -184,7 +178,6 @@ class TestInitialDiffusionCB(pl.Callback):
         hparams = pl_module.hparams
         if hparams.DSB_iteration == 1 and hparams.training_backward:
             pl_module.eval()
-            logger : WandbLogger = trainer.logger
             device = pl_module.device
 
             # we need to find out the shape of the images
@@ -203,7 +196,7 @@ class TestInitialDiffusionCB(pl.Callback):
             for ax in axs.flat:
                 ax.axis("off")
 
-            logger.log_image("Initial diffusion", [wandb.Image(fig)], step=trainer.global_step)
+            pl_module.logger.log_image("Initial diffusion", [wandb.Image(fig)], step=trainer.global_step)
             plt.close("all")
 
 
@@ -238,7 +231,6 @@ class CalculateFID(pl.Callback):
         self.save_images_in_folder(self.x0, self.x0_folder)
 
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
-        logger : WandbLogger = trainer.logger
         iteration = pl_module.hparams.DSB_iteration
         if not pl_module.hparams.training_backward:
             pl_module.eval()
@@ -248,7 +240,7 @@ class CalculateFID(pl.Callback):
             print("Calculating FID..")
             self.save_images_in_folder(x0_pred, generated_x0_folder)
             fid_value = fid.compute_fid(self.x0_folder, generated_x0_folder, num_workers=0, verbose=False)
-            logger.log_metrics({"benchmarks/FID": fid_value, "Iteration": iteration})
+            pl_module.logger.log_metrics({"benchmarks/FID": fid_value, "Iteration": iteration})
 
             # delete the generated images
             shutil.rmtree(generated_x0_folder)

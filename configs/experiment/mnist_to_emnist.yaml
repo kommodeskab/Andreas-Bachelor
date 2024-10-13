@@ -10,47 +10,52 @@ project_name: 'mnist_to_emnist'
 task_name: 'test'
 
 trainer:
-  val_check_interval: 400
-  log_every_n_steps: 20
+  val_check_interval: 1000
+  log_every_n_steps: 40
   max_epochs: 200
-  limit_val_batches: 1
+  limit_val_batches: 5
 
 callbacks:
-  sanity_check:
-    _target_: src.callbacks.SanityCheckImagesCB
+  mmc:
+    _target_: src.callbacks.MMDCB
+    num_samples: 1000
+  fid:
+    _target_: src.callbacks.CalculateFID
+    num_samples: 1000
 
 model:
-  _target_: src.lightning_modules.TRDSB
+  _target_: src.lightning_modules.FRDSB
   max_gamma: 0.1
   min_gamma: 0.001
-  num_steps: 50
-  patience: 10
-  max_iterations: 3000
-  max_norm: 3
+  num_steps: 30
+  T: 1.5
+  patience: 4
+  max_iterations: 5000
   initial_forward_sampling: "diffuse"
+  max_norm: 1.0
 
   forward_model:
-    sample_size: [32, 32]
+    sample_size: [16, 16]
     in_channels: 1
-    dropout: 0.1
     out_channels: 1
-    block_out_channels: [32, 64, 128]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+    dropout: 0.1
+    block_out_channels: [32, 32, 32]
+    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
   
   backward_model:
-    sample_size: [32, 32]
+    sample_size: [16, 16]
     in_channels: 1
     out_channels: 1
     dropout: 0.1
-    block_out_channels: [32, 64, 128]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+    block_out_channels: [32, 32, 32]
+    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
+    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
 
   optimizer:
     _target_: torch.optim.Adam
     _partial_: True
-    lr: 0.001
+    lr: 0.0001
 
   scheduler:
     _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
@@ -60,15 +65,15 @@ model:
     patience: 3
 
 data:
-  cache_num_iters: 200
+  cache_num_iters: 50
   batch_size: 128
 
   start_dataset:
     _target_: src.dataset.EMNISTNoLabel
     split: 'letters'
-    img_size: 32
+    img_size: 16
 
   end_dataset:
     _target_: src.dataset.EMNISTNoLabel
     split: 'digits'
-    img_size: 32
+    img_size: 16

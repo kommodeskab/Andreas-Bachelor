@@ -1,4 +1,5 @@
 import pytorch_lightning as pl
+from pytorch_lightning.loggers import WandbLogger
 
 class BaseLightningModule(pl.LightningModule):
     def __init__(self):
@@ -10,3 +11,7 @@ class BaseLightningModule(pl.LightningModule):
         if prefix:
             losses = {f"{prefix}/{k}": v for k, v in losses.items()}
         return losses
+    
+    @property
+    def logger(self) -> WandbLogger:
+        return self.trainer.logger

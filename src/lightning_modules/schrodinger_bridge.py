@@ -18,11 +18,12 @@ class StandardDSB(BaseLightningModule):
         max_gamma : float,
         min_gamma : float,
         num_steps : int,
+        T : int | None = None,
         patience : int | None = None,
         max_iterations : int | None = None,
         max_dsb_iterations : int | None = 20,
         min_iterations : int = 1,
-        max_norm : float = 1,
+        max_norm : float = float("inf"),
         initial_forward_sampling: Literal["diffuse"] | None = None,
     ):
         """
@@ -52,13 +53,15 @@ class StandardDSB(BaseLightningModule):
             gammas[half_steps:] = torch.flip(gammas[:half_steps + 1], [0])
 
         gammas = torch.cat((torch.tensor([0.0]), gammas)) # add 0 to make the correct indexing
-        gammas_sum = gammas.sum()
-        gammas = gammas / gammas_sum
+
+        # make sure gammas add up to T
+        if T is not None:
+            gammas *= T / gammas.sum()
+        else:
+            self.hparams.T = gammas.sum()
+
         self.gammas = gammas
-        
-        gammas_sum = gammas.sum()
-        assert abs(1 - gammas_sum.item()) <= 1e-2, f"The sum of gammas must be equal to 1, but got {gammas_sum = }"
-        
+                
         self.forward_model : torch.nn.Module = forward_model
         self.backward_model : torch.nn.Module = backward_model
 
@@ -177,7 +180,7 @@ class StandardDSB(BaseLightningModule):
             return self.go_forward(xk, k)
         
         if self.hparams.initial_forward_sampling == "diffuse":
-            return self.ornstein_uhlenbeck(xk, k, alpha=3)
+            return self.ornstein_uhlenbeck(xk, k, alpha=1)
         
         raise ValueError(f"Invalid initial_forward_sampling: {self.hparams.initial_forward_sampling}")
         
@@ -296,6 +299,9 @@ class StandardDSB(BaseLightningModule):
         return f"iteration_{iteration}/{direction}_loss/{training}"
     
     def training_step(self, batch : Tensor, batch_idx : int) -> Tensor:
+        # if training_backward      -> batch = x0
+        # if not training_backward  -> batch = xN
+
         self.hparams.curr_num_iters += 1
         training_backward = self.hparams.training_backward
         

@@ -6,8 +6,9 @@ class BaseReparameterizedDSB(StandardDSB):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         self.gammas_bar = torch.cumsum(self.gammas, 0)
+        self.final_gamma_bar = self.gammas_bar[-1]
         self.sigma_backward = 2 * self.gammas[1:] * self.gammas_bar[:-1] / self.gammas_bar[1:]
-        self.sigma_forward = 2 * self.gammas[1:] * (1 - self.gammas_bar[1:]) / (1 - self.gammas_bar[:-1])
+        self.sigma_forward = 2 * self.gammas[1:] * (self.gammas_bar[-1] - self.gammas_bar[1:]) / (self.gammas_bar[-1] - self.gammas_bar[:-1])
         self.sigma_backward = torch.cat([torch.tensor([0.0]).to(self.device), self.sigma_backward])
         self.sigma_forward = torch.cat([torch.tensor([0.0]).to(self.device), self.sigma_forward])
 
@@ -19,7 +20,7 @@ class TRDSB(BaseReparameterizedDSB):
         batch_size = xk.size(0)
         ks = self.k_to_tensor(k, batch_size)
         xN_pred = self.forward_call(xk, ks)
-        mu = xk + self.gammas[k + 1] / (1 - self.gammas_bar[k]) * (xN_pred - xk)
+        mu = xk + self.gammas[k + 1] / (self.gammas_bar[-1] - self.gammas_bar[k]) * (xN_pred - xk)
         sigma = self.sigma_forward[k + 1]
         xk_plus_one = mu + sigma * torch.randn_like(xk)
         
@@ -78,7 +79,7 @@ class FRDSB(BaseReparameterizedDSB):
     def _forward_loss(self, xk : Tensor, ks : Tensor, xN : Tensor) -> Tensor:
         shape_for_constant = self._get_shape_for_constant(xk)
         gammas_bar = self.gammas_bar.to(self.device)[ks].view(shape_for_constant)
-        target = (xN - xk) / (1 - gammas_bar)
+        target = (xN - xk) / (self.gammas_bar[-1] - gammas_bar)
         pred = self.forward_call(xk, ks)
         loss = self.mse(target, pred)
         return loss
@@ -99,7 +100,7 @@ class FRDSB(BaseReparameterizedDSB):
     def pred_xN(self, xk : Tensor, ks : Tensor) -> Tensor:
         shape_for_constant = self._get_shape_for_constant(xk)
         gammas_bar = self.gammas_bar.to(self.device)[ks].view(shape_for_constant)
-        return xk + (1 - gammas_bar) * self.forward_call(xk, ks)
+        return xk + (self.gammas_bar[-1] - gammas_bar) * self.forward_call(xk, ks)
     
     def _get_shape_for_constant(self, x : Tensor) -> list[int]:
         return [-1] + [1] * (x.dim() - 1)

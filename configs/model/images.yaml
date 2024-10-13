@@ -24,4 +24,3 @@ backward_model:
 
 patience: 5
 max_iterations: 20000
-max_norm: 2
