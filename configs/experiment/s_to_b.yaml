@@ -1,0 +1,33 @@
+# @package _global_
+defaults:
+  - override /trainer: cpu
+  - override /data: s_to_b
+  - override /callbacks: schrodinger2d
+  - override /model: twod
+  - override /logger: default
+
+project_name: 'S to B'
+task_name: 'test'
+
+trainer:
+  val_check_interval: 200
+  log_every_n_steps: 5
+
+data:
+  cache_num_iters: 10
+
+model:
+  _target_: src.lightning_modules.TRDSB
+
+  forward_model:
+    n_cond: 101
+
+  backward_model:
+    n_cond: 101
+
+  max_gamma: 0.01
+  min_gamma: 0.01
+  num_steps: 100
+  max_iterations: 2000
+  max_norm: 1
+  initial_forward_sampling: "diffuse"

@@ -1,4 +1,0 @@
-_target_: src.data_modules.simple_dm.Fun2dSchrodingerDM
-batch_size: 256
-cache_num_iters: 100
-size: 15000
