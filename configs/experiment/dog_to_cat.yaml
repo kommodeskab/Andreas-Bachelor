@@ -1,16 +1,16 @@
 # @package _global_
 defaults:
   - override /trainer: gpu
-  - override /data: male_to_female_data
+  - override /data: dog_to_cat
   - override /callbacks: schrodinger_images
-  - override /model: big_images
   - override /logger: default
+  - override /model: big_images
 
-project_name: 'male_to_female'
-task_name: 'schrodinger_images'
+project_name: 'dog_to_cat'
+task_name: 'test'
 
 trainer:
-  val_check_interval: 3000
+  val_check_interval: 1000
   log_every_n_steps: 40
   max_epochs: 200
   limit_val_batches: 5
@@ -27,9 +27,9 @@ callbacks:
 model:
   _target_: src.lightning_modules.TRDSB
   max_gamma: 0.1
-  min_gamma: 0.001
+  min_gamma: 0.01
   num_steps: 50
-  T: 1.5
+  T: 1.0
   patience: 10
   max_iterations: 30000
   initial_forward_sampling: "diffuse"
@@ -41,9 +41,9 @@ model:
     in_channels: 3
     out_channels: 3
     layers_per_block: 2
-    block_out_channels: [64, 128, 256]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+    block_out_channels: [64, 128, 256, 512]
+    down_block_types: ["DownBlock2D", "AttnDownBlock2D",  "AttnDownBlock2D", "AttnDownBlock2D"]
+    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
   
   backward_model:
     dropout: 0.1
@@ -51,14 +51,14 @@ model:
     in_channels: 3
     out_channels: 3
     layers_per_block: 2
-    block_out_channels: [64, 128, 256]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+    block_out_channels: [64, 128, 256, 512]
+    down_block_types: ["DownBlock2D", "AttnDownBlock2D",  "AttnDownBlock2D", "AttnDownBlock2D"]
+    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
 
   optimizer:
-    _target_: torch.optim.Adam
+    _target_: torch.optim.AdamW
     _partial_: True
-    lr: 0.0001
+    lr: 0.00001
 
   scheduler:
     _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
@@ -69,9 +69,5 @@ model:
 
 data:
   cache_num_iters: 400
-  batch_size: 256
-  start_dataset:
-    img_size: 32
-  end_dataset:
-    img_size: 32
+  batch_size: 64
   num_workers: 4

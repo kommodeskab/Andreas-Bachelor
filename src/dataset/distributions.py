@@ -6,6 +6,8 @@ import random
 class NormalDataset(Dataset):
     def __init__(self, mu : int, sigma : int, dim : int, size : int = 1000):
         super().__init__()
+        if isinstance(dim, int):
+            dim = (dim,)
         self.dim = dim
         self.size = size
         self.mu = mu
@@ -15,7 +17,7 @@ class NormalDataset(Dataset):
         return self.size
     
     def __getitem__(self, index):
-        return self.mu + self.sigma * torch.randn(self.dim)
+        return self.mu + self.sigma * torch.randn(tuple(self.dim))
 
 class StandardNormalDataset(NormalDataset):
     def __init__(self, dim : int, size : int = 1000):

@@ -131,9 +131,8 @@ class PlotImagesCB(pl.Callback):
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
         device = pl_module.device
-        self.x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
-        self.xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, 5).to(device)
-        trajectory = pl_module.sample(self.x0, forward = True, return_trajectory = True, clamp=True, ema_scope=self.ema_scope).cpu()
+        x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(device)
+        trajectory = pl_module.sample(x0, forward = True, return_trajectory = True, clamp=True, ema_scope=self.ema_scope).cpu()
         trajectory = (trajectory + 1) / 2
         
         fig = get_image_fig(trajectory)
@@ -146,7 +145,8 @@ class PlotImagesCB(pl.Callback):
 
         is_backward = pl_module.hparams.training_backward
         title = "Backward" if is_backward else "Forward"
-        original_xs = self.xN if is_backward else self.x0
+        dataset = trainer.datamodule.end_dataset_val if is_backward else trainer.datamodule.start_dataset_val
+        original_xs = get_batch_from_dataset(dataset, 5, shuffle=True).to(pl_module.device)
 
         trajectory = pl_module.sample(original_xs, forward = not is_backward, return_trajectory = True, clamp=True, ema_scope=self.ema_scope).cpu()
         trajectory = (trajectory + 1) / 2
@@ -161,12 +161,12 @@ class PlotImagesCB(pl.Callback):
         if is_backward:
             trajectory = trajectory.flip(0)
 
-        for i in range(min(5, trajectory.size(1))):
-            video = trajectory[:, i]
-            if video.shape[1] == 1:
-                video = video.repeat(1, 3, 1, 1)
-            video = (video * 255).numpy().astype("uint8")
-            pl_module.logger.log_video(f"Videos", [video], step=trainer.global_step, caption=[f"Trajectory {i}"], fps=[video_fps])
+        # save the first video
+        video = trajectory[:, 0]
+        if video.shape[1] == 1:
+            video = video.repeat(1, 3, 1, 1)
+        video = (video * 255).numpy().astype("uint8")
+        pl_module.logger.log_video(f"iteration_{iteration}/{title} video", [video], step=trainer.global_step, fps=[video_fps])
 
 class TestInitialDiffusionCB(pl.Callback):
     def __init__(self, num_rows : int = 5, ema_scope : bool = True):

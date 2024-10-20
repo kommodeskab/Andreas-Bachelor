@@ -5,7 +5,6 @@ import torch
 class BaseReparameterizedDSB(StandardDSB):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.gammas_bar = torch.cumsum(self.gammas, 0)
         self.final_gamma_bar = self.gammas_bar[-1]
         self.sigma_backward = 2 * self.gammas[1:] * self.gammas_bar[:-1] / self.gammas_bar[1:]
         self.sigma_forward = 2 * self.gammas[1:] * (self.gammas_bar[-1] - self.gammas_bar[1:]) / (self.gammas_bar[-1] - self.gammas_bar[:-1])

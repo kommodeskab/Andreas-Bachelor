@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from .basedataset import BaseDataset
 
 class CelebADataset(BaseDataset):
-    def __init__(self, img_size : int = 32, download : bool = False):
+    def __init__(self, img_size : int = 32):
         super().__init__()
         
         transform = Compose([
@@ -17,7 +17,7 @@ class CelebADataset(BaseDataset):
         self.celeba = CelebA(
             root="data",
             split="all",
-            download=download,
+            download=True,
             transform=transform,
             target_type="attr",
         )

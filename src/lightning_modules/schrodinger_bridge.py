@@ -5,6 +5,8 @@ from src.lightning_modules.baselightningmodule import BaseLightningModule
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.nn import Module
+import torch.nn.init as init
+import torch.nn as nn
 from torch_ema import ExponentialMovingAverage
 from pytorch_lightning.utilities import grad_norm
 
@@ -61,14 +63,39 @@ class StandardDSB(BaseLightningModule):
             self.hparams.T = gammas.sum()
 
         self.gammas = gammas
+        self.gammas_bar = torch.cumsum(self.gammas, 0)
                 
         self.forward_model : torch.nn.Module = forward_model
         self.backward_model : torch.nn.Module = backward_model
+        self.init_weights()
 
         self.partial_optimizer = optimizer
         self.partial_scheduler = scheduler
         
-        self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()    
+        self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()  
+        
+    def init_weights(self):
+        """
+        Initializes the weights of the forward and backward models  
+        using the Kaiming Normal initialization
+        """
+        @torch.no_grad()
+        def initialize(m):
+            if isinstance(m, nn.Conv2d):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+            elif isinstance(m, nn.BatchNorm2d):
+                init.constant_(m.weight, 1)
+                init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                init.kaiming_normal_(m.weight, mode='fan_out')
+                if m.bias is not None:
+                    init.constant_(m.bias, 0)
+
+        # Apply initialization to both networks
+        self.forward_model.apply(initialize)
+        self.backward_model.apply(initialize)  
 
     def on_fit_start(self) -> None:
         # make the ema for the forward and backward models
@@ -89,7 +116,8 @@ class StandardDSB(BaseLightningModule):
 
         if self.hparams.max_dsb_iterations is not None:
             if self.hparams.DSB_iteration > self.hparams.max_dsb_iterations:
-                return True
+                print("Stopping training as max_dsb_iterations has been reached")
+                exit()
 
         if patience is not None:
             val_losses = params.val_losses
@@ -169,18 +197,18 @@ class StandardDSB(BaseLightningModule):
         """
         return self.backward_model(x, k)
     
-    def ornstein_uhlenbeck(self, xk : Tensor, k : int, alpha : float = 1) -> Tensor:
-        mu = xk - alpha * self.gammas[k + 1] * xk
+    def ornstein_uhlenbeck(self, xk : Tensor, k : int) -> Tensor:        
+        T = self.hparams.T
+        mu = (1 - self.gammas[k + 1] * self.gammas_bar[k + 1] / T) * xk
         sigma = torch.sqrt(2 * self.gammas[k + 1])
         return mu + sigma * torch.randn_like(xk)
-    
     
     def _initial_go_forward(self, xk : Tensor, k : int) -> Tensor:
         if self.hparams.initial_forward_sampling is None:
             return self.go_forward(xk, k)
         
         if self.hparams.initial_forward_sampling == "diffuse":
-            return self.ornstein_uhlenbeck(xk, k, alpha=1)
+            return self.ornstein_uhlenbeck(xk, k)
         
         raise ValueError(f"Invalid initial_forward_sampling: {self.hparams.initial_forward_sampling}")
         
@@ -332,12 +360,19 @@ class StandardDSB(BaseLightningModule):
         optimizer.zero_grad()
         loss = self._backward_loss(sampled_batch, ks, x0) if training_backward else self._forward_loss(sampled_batch, ks, xN)
         self.manual_backward(loss)
+        
+        # raise exception if loss is nan
+        if torch.isnan(loss).any():
+            raise ValueError(f"Loss is nan:\n {loss}")
+        
+        if loss.item() > 1e6:
+            print(f"Loss is too high: {loss.item()}")
 
         # clip gradients and log gradients
-        self.clip_gradients(optimizer, self.hparams.max_norm, "norm")
-        norm = grad_norm(model, norm_type=2).get('grad_2.0_norm_total', 0)
         model_name = "backward_model" if training_backward else "forward_model"
-        self.log(f"{model_name}_grad_norm", norm, prog_bar=True)
+        norm = grad_norm(model, norm_type=2).get('grad_2.0_norm_total', 0)
+        self.log(f"{model_name}_grad_norm_before_clip", norm, prog_bar=True)
+        self.clip_gradients(optimizer, self.hparams.max_norm, "norm")
 
         # step the optimizer and update the ema
         optimizer.step()

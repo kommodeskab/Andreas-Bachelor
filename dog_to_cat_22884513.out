@@ -1,0 +1,186 @@
+Loaded dependency [python3/3.12.4]: sqlite3/3.46.0
+Loaded dependency [python3/3.12.4]: gcc/12.4.0-binutils-2.42
+Loaded module: python3/3.12.4
+
+Loading python3/3.12.4
+  Loading requirement: sqlite3/3.46.0 gcc/12.4.0-binutils-2.42
+Seed set to 42
+wandb: Using wandb-core as the SDK backend. Please refer to https://wandb.me/wandb-core for more information.
+wandb: Currently logged in as: kommodeskab (kommodeskab-danmarks-tekniske-universitet-dtu). Use `wandb login --relogin` to force relogin
+wandb: Tracking run with wandb version 0.18.1
+wandb: Run data is saved locally in logs/wandb/run-20241020_212113-201024212111
+wandb: Run `wandb offline` to turn off syncing.
+wandb: Syncing run test
+wandb: ⭐️ View project at https://wandb.ai/kommodeskab-danmarks-tekniske-universitet-dtu/dog_to_cat
+wandb: 🚀 View run at https://wandb.ai/kommodeskab-danmarks-tekniske-universitet-dtu/dog_to_cat/runs/201024212111
+Trainer already configured with model summary callbacks: [<class 'pytorch_lightning.callbacks.rich_model_summary.RichModelSummary'>]. Skipping setting a default `ModelSummary` callback.
+GPU available: True (cuda), used: True
+TPU available: False, using: 0 TPU cores
+HPU available: False, using: 0 HPUs
+LOCAL_RANK: 0 - CUDA_VISIBLE_DEVICES: [0]
+Config:
+
+trainer:
+  max_epochs: 200
+  accelerator: gpu
+  log_every_n_steps: 40
+  reload_dataloaders_every_n_epochs: 1
+  val_check_interval: 1000
+  num_sanity_val_steps: 0
+  profiler: simple
+  limit_val_batches: 5
+  fast_dev_run: false
+data:
+  _target_: src.data_modules.BaseDSBDM
+  start_dataset:
+    _target_: src.dataset.AFHQ
+    split: dog
+    img_size: 32
+  end_dataset:
+    _target_: src.dataset.AFHQ
+    split: cat
+    img_size: 32
+  batch_size: 64
+  cache_num_iters: 400
+  num_workers: 4
+  train_val_split: 0.9
+model:
+  _target_: src.lightning_modules.TRDSB
+  forward_model:
+    _target_: src.networks.unets.UNet2D
+    sample_size:
+    - 32
+    - 32
+    in_channels: 3
+    out_channels: 3
+    layers_per_block: 2
+    down_block_types:
+    - DownBlock2D
+    - AttnDownBlock2D
+    - AttnDownBlock2D
+    - AttnDownBlock2D
+    up_block_types:
+    - AttnUpBlock2D
+    - AttnUpBlock2D
+    - AttnUpBlock2D
+    - UpBlock2D
+    block_out_channels:
+    - 64
+    - 128
+    - 256
+    - 512
+    dropout: 0.1
+  backward_model:
+    _target_: src.networks.unets.UNet2D
+    sample_size:
+    - 32
+    - 32
+    in_channels: 3
+    out_channels: 3
+    layers_per_block: 2
+    down_block_types:
+    - DownBlock2D
+    - AttnDownBlock2D
+    - AttnDownBlock2D
+    - AttnDownBlock2D
+    up_block_types:
+    - AttnUpBlock2D
+    - AttnUpBlock2D
+    - AttnUpBlock2D
+    - UpBlock2D
+    block_out_channels:
+    - 64
+    - 128
+    - 256
+    - 512
+    dropout: 0.1
+  patience: 10
+  max_gamma: 0.1
+  min_gamma: 0.01
+  num_steps: 50
+  T: 1.5
+  max_iterations: 30000
+  initial_forward_sampling: diffuse
+  max_norm: 3.0
+  optimizer:
+    _target_: torch.optim.AdamW
+    _partial_: true
+    lr: 0.0001
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: true
+    mode: min
+    factor: 0.5
+    patience: 4
+callbacks:
+  lr_monitor:
+    _target_: pytorch_lightning.callbacks.LearningRateMonitor
+    logging_interval: step
+  richprogressbar:
+    _target_: pytorch_lightning.callbacks.RichProgressBar
+  plotgammaschedule:
+    _target_: src.callbacks.PlotGammaScheduleCB
+  model_summary:
+    _target_: pytorch_lightning.callbacks.RichModelSummary
+    max_depth: 2
+  plot_images:
+    _target_: src.callbacks.PlotImagesCB
+    ema_scope: true
+  image_grid:
+    _target_: src.callbacks.PlotImageSamplesCB
+  marginal_distributions:
+    _target_: src.callbacks.MarginalDistributionsImagesCB
+  initial_diffusion:
+    _target_: src.callbacks.TestInitialDiffusionCB
+    num_rows: 5
+  fid:
+    _target_: src.callbacks.CalculateFID
+    num_samples: 1000
+    ema_scope: true
+logger:
+  save_dir: logs
+  offline: false
+  log_model: false
+project_name: dog_to_cat
+task_name: test
+seed: 42
+compile: true
+
+Instantiating model and datamodule..
+Compiling model..
+Setting up logger..
+Instantiating callbacks..
+Setting up trainer..
+Beginning training..
+┏━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┓
+┃    ┃ Name                          ┃ Type              ┃ Params ┃ Mode  ┃
+┡━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━┩
+│ 0  │ forward_model                 │ UNet2D            │ 63.5 M │ train │
+│ 1  │ forward_model.conv_in         │ Conv2d            │  1.8 K │ train │
+│ 2  │ forward_model.time_proj       │ Timesteps         │      0 │ train │
+│ 3  │ forward_model.time_embedding  │ TimestepEmbedding │ 82.4 K │ train │
+│ 4  │ forward_model.down_blocks     │ ModuleList        │ 15.2 M │ train │
+│ 5  │ forward_model.up_blocks       │ ModuleList        │ 37.4 M │ train │
+│ 6  │ forward_model.mid_block       │ UNetMidBlock2D    │ 10.8 M │ train │
+│ 7  │ forward_model.conv_norm_out   │ GroupNorm         │    128 │ train │
+│ 8  │ forward_model.conv_act        │ SiLU              │      0 │ train │
+│ 9  │ forward_model.conv_out        │ Conv2d            │  1.7 K │ train │
+│ 10 │ backward_model                │ UNet2D            │ 63.5 M │ train │
+│ 11 │ backward_model.conv_in        │ Conv2d            │  1.8 K │ train │
+│ 12 │ backward_model.time_proj      │ Timesteps         │      0 │ train │
+│ 13 │ backward_model.time_embedding │ TimestepEmbedding │ 82.4 K │ train │
+│ 14 │ backward_model.down_blocks    │ ModuleList        │ 15.2 M │ train │
+│ 15 │ backward_model.up_blocks      │ ModuleList        │ 37.4 M │ train │
+│ 16 │ backward_model.mid_block      │ UNetMidBlock2D    │ 10.8 M │ train │
+│ 17 │ backward_model.conv_norm_out  │ GroupNorm         │    128 │ train │
+│ 18 │ backward_model.conv_act       │ SiLU              │      0 │ train │
+│ 19 │ backward_model.conv_out       │ Conv2d            │  1.7 K │ train │
+│ 20 │ mse                           │ MSELoss           │      0 │ train │
+└────┴───────────────────────────────┴───────────────────┴────────┴───────┘
+Trainable params: 126 M                                                         
+Non-trainable params: 0                                                         
+Total params: 126 M                                                             
+Total estimated model params size (MB): 507                                     
+Modules in train mode: 704                                                      
+Modules in eval mode: 0                                                         
+Calculating FID..
