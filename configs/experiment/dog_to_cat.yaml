@@ -10,15 +10,12 @@ project_name: 'dog_to_cat'
 task_name: 'test'
 
 trainer:
-  val_check_interval: 1000
-  log_every_n_steps: 40
+  val_check_interval: 5000
+  log_every_n_steps: 100
   max_epochs: 200
-  limit_val_batches: 5
+  limit_val_batches: 1
 
 callbacks:
-  initial_diffusion:
-    _target_: src.callbacks.TestInitialDiffusionCB
-    num_rows: 5
   fid:
     _target_: src.callbacks.CalculateFID
     num_samples: 1000
@@ -26,14 +23,14 @@ callbacks:
 
 model:
   _target_: src.lightning_modules.TRDSB
-  max_gamma: 0.1
-  min_gamma: 0.01
-  num_steps: 50
+  max_gamma: 0.01
+  min_gamma: 0.001
+  num_steps: 100
   T: 1.0
-  patience: 10
-  max_iterations: 30000
+  patience: 2
+  max_iterations: 30001
   initial_forward_sampling: "diffuse"
-  max_norm: 3.0
+  max_norm: 1.0
 
   forward_model:
     dropout: 0.1
@@ -41,9 +38,9 @@ model:
     in_channels: 3
     out_channels: 3
     layers_per_block: 2
-    block_out_channels: [64, 128, 256, 512]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D",  "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+    block_out_channels: [128, 256, 512]
+    down_block_types: ["DownBlock2D", "AttnDownBlock2D",  "AttnDownBlock2D"]
+    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
   
   backward_model:
     dropout: 0.1
@@ -51,23 +48,22 @@ model:
     in_channels: 3
     out_channels: 3
     layers_per_block: 2
-    block_out_channels: [64, 128, 256, 512]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D",  "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+    block_out_channels: [128, 256, 512]
+    down_block_types: ["DownBlock2D", "AttnDownBlock2D",  "AttnDownBlock2D"]
+    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
 
   optimizer:
     _target_: torch.optim.AdamW
     _partial_: True
-    lr: 0.00001
+    lr: 0.0001
 
   scheduler:
-    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
     _partial_: True
-    mode: 'min'
-    factor: 0.5
-    patience: 4
+    T_0: 1000
+    T_mult: 1
 
 data:
-  cache_num_iters: 400
-  batch_size: 64
+  cache_num_iters: 100
+  batch_size: 128
   num_workers: 4

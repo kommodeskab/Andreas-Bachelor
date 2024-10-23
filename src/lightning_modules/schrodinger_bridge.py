@@ -4,6 +4,7 @@ from torch import Tensor
 from src.lightning_modules.baselightningmodule import BaseLightningModule
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, ReduceLROnPlateau
 from torch.nn import Module
 import torch.nn.init as init
 import torch.nn as nn
@@ -26,7 +27,7 @@ class StandardDSB(BaseLightningModule):
         max_dsb_iterations : int | None = 20,
         min_iterations : int = 1,
         max_norm : float = float("inf"),
-        initial_forward_sampling: Literal["diffuse"] | None = None,
+        initial_forward_sampling: Literal["diffuse", "brownian"] | None = None,
     ):
         """
         Initializes the StandardDSB model
@@ -68,7 +69,7 @@ class StandardDSB(BaseLightningModule):
         self.forward_model : torch.nn.Module = forward_model
         self.backward_model : torch.nn.Module = backward_model
         self.init_weights()
-
+        
         self.partial_optimizer = optimizer
         self.partial_scheduler = scheduler
         
@@ -203,12 +204,19 @@ class StandardDSB(BaseLightningModule):
         sigma = torch.sqrt(2 * self.gammas[k + 1])
         return mu + sigma * torch.randn_like(xk)
     
+    def brownian(self, xk : Tensor, k : int) -> Tensor:
+        sigma = torch.sqrt(2 * self.gammas[k + 1])
+        return xk + sigma * torch.randn_like(xk)
+    
     def _initial_go_forward(self, xk : Tensor, k : int) -> Tensor:
         if self.hparams.initial_forward_sampling is None:
             return self.go_forward(xk, k)
         
         if self.hparams.initial_forward_sampling == "diffuse":
             return self.ornstein_uhlenbeck(xk, k)
+        
+        if self.hparams.initial_forward_sampling == "brownian":
+            return self.brownian(xk, k)
         
         raise ValueError(f"Invalid initial_forward_sampling: {self.hparams.initial_forward_sampling}")
         
@@ -247,7 +255,7 @@ class StandardDSB(BaseLightningModule):
         """
         raise NotImplementedError
     
-    def _backward_loss(self, xk : Tensor, ks : int, x0 : Tensor) -> Tensor:
+    def _backward_loss(self, xk_plus_one : Tensor, ks_plus_one : int, x0 : Tensor) -> Tensor:
         """
         Compute the loss for the backward model.
         Uses the forward model to 'walk' forward and optimize the backward model to 'walk' back to the original point
@@ -306,19 +314,21 @@ class StandardDSB(BaseLightningModule):
 
         return trajectory if return_trajectory else xk
     
-    def _get_model_optim_and_ema(self, is_backward : bool) -> Tuple[Module, Optimizer, ExponentialMovingAverage]:
+    def _get_training_components(self, is_backward : bool) -> Tuple[Module, Optimizer, ExponentialMovingAverage, LRScheduler]:
         """
         Given the model, return the optimizer and the ema
 
-        :param Literal["forward", "backward"] which_model: the model to get
+        :param bool is_backward: whether to get the backward model or the forward model
 
         :return Tuple[Module, Optimizer, ExponentialMovingAverage]: the model, optimizer and ema
         """
+        backward_optim, forward_optim = self.optimizers()
+        backward_scheduler, forward_scheduler = self.lr_schedulers()
 
         if is_backward:
-            return self.backward_model, self.optimizers()[0], self.backward_ema
+            return self.backward_model, backward_optim, self.backward_ema, backward_scheduler
         else:
-            return self.forward_model, self.optimizers()[1], self.forward_ema
+            return self.forward_model, forward_optim, self.forward_ema, forward_scheduler
 
     def _get_loss_name(self, is_backward : bool, is_training : bool):
         iteration = self.hparams.DSB_iteration
@@ -353,17 +363,18 @@ class StandardDSB(BaseLightningModule):
 
         # -- OPTIMIZATION --
         # get model, optimizer and ema
-        model, optimizer, ema = self._get_model_optim_and_ema(training_backward)
+        model, optimizer, ema, lr_scheduler = self._get_training_components(training_backward)
         model.train()
 
         # calculate loss and do backward pass
         optimizer.zero_grad()
+        # if training backward, then sampled_batch = xk + 1 else sampled_batch = xk
         loss = self._backward_loss(sampled_batch, ks, x0) if training_backward else self._forward_loss(sampled_batch, ks, xN)
         self.manual_backward(loss)
         
         # raise exception if loss is nan
         if torch.isnan(loss).any():
-            raise ValueError(f"Loss is nan:\n {loss}")
+            raise ValueError(f"Loss is nan: {loss.item() = }")
         
         if loss.item() > 1e6:
             print(f"Loss is too high: {loss.item()}")
@@ -378,6 +389,10 @@ class StandardDSB(BaseLightningModule):
         optimizer.step()
         ema.update()
         self.log(self._get_loss_name(is_backward = training_backward, is_training = True), loss.item(), prog_bar=True)
+        
+        # update scheduler
+        if isinstance(lr_scheduler, CosineAnnealingWarmRestarts):
+            lr_scheduler.step(self.hparams.curr_num_iters)
 
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> Tensor:
         if self.hparams.training_backward and dataloader_idx == 0:
@@ -402,27 +417,29 @@ class StandardDSB(BaseLightningModule):
  
     def on_validation_epoch_end(self) -> None:
         # after validation we want to update the learning rate
+        is_backward = self.hparams.training_backward
         backward_scheduler, forward_scheduler = self.lr_schedulers()
+        scheduler = backward_scheduler if is_backward else forward_scheduler
+
         metrics = self.trainer.callback_metrics
 
         # if no losses were computed, return
         if len(metrics) == 0:
             return
         
-        # take a step based on the validation loss
-        if self.hparams.training_backward:
-            val_loss = metrics[self._get_loss_name(is_backward = True, is_training = False)].item()
-            backward_scheduler.step(val_loss)
-        else:
-            val_loss = metrics[self._get_loss_name(is_backward = False, is_training = False)].item()
-            forward_scheduler.step(val_loss)
-        
+        val_loss = metrics[self._get_loss_name(is_backward = is_backward, is_training = False)].item()
         self.hparams.val_losses.append(val_loss)
+        
+        if isinstance(scheduler, ReduceLROnPlateau):
+            scheduler.step(val_loss)
     
     def configure_optimizers(self):
         backward_opt = self.partial_optimizer(self.backward_model.parameters())
         forward_opt = self.partial_optimizer(self.forward_model.parameters())
         backward_scheduler = {'scheduler': self.partial_scheduler(backward_opt), 'name': 'lr_scheduler_backward'}
         forward_scheduler = {'scheduler': self.partial_scheduler(forward_opt), 'name': 'lr_scheduler_forward'}
+        
+        sch = backward_scheduler['scheduler']
+        assert isinstance(sch, (CosineAnnealingWarmRestarts, ReduceLROnPlateau)), f"The scheduler must be either CosineAnnealingWarmRestarts or ReduceLROnPlateau, but got {type(sch)}"
         
         return [backward_opt, forward_opt], [backward_scheduler, forward_scheduler]

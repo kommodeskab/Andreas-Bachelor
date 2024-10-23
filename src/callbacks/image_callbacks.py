@@ -10,8 +10,8 @@ from cleanfid import fid
 import os
 import torch
 import shutil
-from pytorch_lightning.loggers import WandbLogger
 import wandb
+import uuid
 
 class MarginalDistributionsImagesCB(pl.Callback):
     def __init__(self, num_rows : int = 5):
@@ -236,7 +236,8 @@ class CalculateFID(pl.Callback):
             pl_module.eval()
             x0_pred = pl_module.sample(self.xN, forward=False, return_trajectory=False, clamp=True, ema_scope=self.ema_scope)
             x0_pred = (x0_pred + 1) / 2
-            generated_x0_folder = "data/fid/generated"
+            random_folder_name = str(uuid.uuid4())
+            generated_x0_folder = f"data/fid/{random_folder_name}"
             print("Calculating FID..")
             self.save_images_in_folder(x0_pred, generated_x0_folder)
             fid_value = fid.compute_fid(self.x0_folder, generated_x0_folder, num_workers=0, verbose=False)
