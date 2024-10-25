@@ -198,9 +198,8 @@ class StandardDSB(BaseLightningModule):
         """
         return self.backward_model(x, k)
     
-    def ornstein_uhlenbeck(self, xk : Tensor, k : int) -> Tensor:        
-        T = self.hparams.T
-        mu = (1 - self.gammas[k + 1] * self.gammas_bar[k + 1] / T) * xk
+    def ornstein_uhlenbeck(self, xk : Tensor, k : int, alpha : float = 1.0) -> Tensor:        
+        mu = (1 - alpha * self.gammas[k + 1]) * xk
         sigma = torch.sqrt(2 * self.gammas[k + 1])
         return mu + sigma * torch.randn_like(xk)
     
@@ -212,8 +211,10 @@ class StandardDSB(BaseLightningModule):
         if self.hparams.initial_forward_sampling is None:
             return self.go_forward(xk, k)
         
-        if self.hparams.initial_forward_sampling == "diffuse":
-            return self.ornstein_uhlenbeck(xk, k)
+        if "ornstein" in self.hparams.initial_forward_sampling:
+            # the string comes in the format "ornstein_0.5"
+            alpha = float(self.hparams.initial_forward_sampling.split("_")[1])
+            return self.ornstein_uhlenbeck(xk, k, alpha)
         
         if self.hparams.initial_forward_sampling == "brownian":
             return self.brownian(xk, k)

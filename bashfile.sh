@@ -1,10 +1,10 @@
 #!/bin/sh
 
 # SET JOB NAME
-#BSUB -J pp_test
+#BSUB -J male_to_female
 
 # select gpu, choose gpuv100 or gpua100 (best)
-#BSUB -q gpua100
+#BSUB -q gpuv100
 
 # number of GPUs to use
 #BSUB -gpu "num=1:mode=exclusive_process"
@@ -24,4 +24,4 @@
 
 module load python3/3.12.4
 source .venv/bin/activate
-python train.py +experiment=pp_test logger.offline=False
+python train.py +experiment=male_to_female logger.offline=False

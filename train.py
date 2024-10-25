@@ -15,16 +15,7 @@ def my_app(cfg : DictConfig) -> None:
     pl.seed_everything(cfg.seed)
 
     cfg_yaml = OmegaConf.to_yaml(cfg, resolve=True)
-    print(f"Config:\n\n{cfg_yaml}")
     project_name, task_name = cfg.project_name, cfg.task_name
-
-    print("Instantiating model and datamodule..")
-    datamodule = hydra.utils.instantiate(cfg.data)
-    model = hydra.utils.instantiate(cfg.model)
-
-    print("Compiling model..")
-    if cfg.compile:
-        torch.compile(model)
     
     print("Setting up logger..")
     logger = WandbLogger(
@@ -34,6 +25,16 @@ def my_app(cfg : DictConfig) -> None:
         version=get_current_time(), 
         )
     logger.experiment.config["cfg"] = cfg_yaml
+    
+    print("Instantiating model and datamodule..")
+    datamodule = hydra.utils.instantiate(cfg.data)
+    model = hydra.utils.instantiate(cfg.model)
+
+    print("Compiling model..")
+    if cfg.compile:
+        torch.compile(model)
+    
+    print(f"Config:\n\n{cfg_yaml}")
     
     print("Instantiating callbacks..")
     callbacks = instantiate_callbacks(cfg.get("callbacks", None))
