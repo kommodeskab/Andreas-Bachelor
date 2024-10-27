@@ -11,6 +11,9 @@ class BaseReparameterizedDSB(StandardDSB):
         self.sigma_backward = torch.cat([torch.tensor([0.0]).to(self.device), self.sigma_backward])
         self.sigma_forward = torch.cat([torch.tensor([0.0]).to(self.device), self.sigma_forward])
 
+    def _get_shape_for_constant(self, x : Tensor) -> list[int]:
+        return [-1] + [1] * (x.dim() - 1)
+
 class TRDSB(BaseReparameterizedDSB):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -54,7 +57,7 @@ class TRDSB(BaseReparameterizedDSB):
 class FRDSB(BaseReparameterizedDSB):
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        
+    
     def go_forward(self, xk : Tensor, k : int) -> Tensor:
         batch_size = xk.size(0)
         ks = self.k_to_tensor(k, batch_size)
@@ -101,5 +104,38 @@ class FRDSB(BaseReparameterizedDSB):
         gammas_bar = self.gammas_bar.to(self.device)[ks].view(shape_for_constant)
         return xk + (self.gammas_bar[-1] - gammas_bar) * self.forward_call(xk, ks)
     
-    def _get_shape_for_constant(self, x : Tensor) -> list[int]:
-        return [-1] + [1] * (x.dim() - 1)
+class SemiFRDSB(BaseReparameterizedDSB):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+    
+    def go_forward(self, xk : Tensor, k : int) -> Tensor:
+        batch_size = xk.size(0)
+        ks = self.k_to_tensor(k, batch_size)
+        f = self.forward_call(xk, ks)
+        mu = xk + self.gammas[k + 1] / (self.gammas_bar[-1] - self.gammas_bar[k]) * f
+        sigma = self.sigma_forward[k + 1]
+        xk_plus_one = mu + sigma * torch.randn_like(xk)
+        
+        return xk_plus_one
+    
+    def go_backward(self, xk_plus_one : Tensor, k_plus_one : int) -> Tensor:
+        batch_size = xk_plus_one.size(0)
+        ks_plus_one = self.k_to_tensor(k_plus_one, batch_size)
+        v = self.backward_call(xk_plus_one, ks_plus_one)
+        mu = xk_plus_one + self.gammas[k_plus_one] / self.gammas_bar[k_plus_one] * v
+        sigma = self.sigma_backward[k_plus_one]
+        xk = mu + sigma * torch.randn_like(xk_plus_one)
+        
+        return xk
+    
+    def _forward_loss(self, xk : Tensor, ks : Tensor, xN : Tensor) -> Tensor:
+        target = xN - xk
+        pred = self.forward_call(xk, ks)
+        loss = self.mse(target, pred)
+        return loss
+    
+    def _backward_loss(self, xk_plus_one : Tensor, ks_plus_one : Tensor, x0 : Tensor) -> Tensor:
+        target = x0 - xk_plus_one
+        pred = self.backward_call(xk_plus_one, ks_plus_one)
+        loss = self.mse(target, pred)
+        return loss

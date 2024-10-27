@@ -7,12 +7,13 @@ defaults:
   - override /logger: default
 
 project_name: 'one_to_seven'
-task_name: 'test'
+task_name: 'FR_test'
 
 trainer:
   val_check_interval: 400
   log_every_n_steps: 20
   max_epochs: 100
+  limit_val_batches: 1
 
 callbacks:
   mmc:
@@ -21,20 +22,17 @@ callbacks:
   fid:
     _target_: src.callbacks.CalculateFID
     num_samples: 1000
-  initial_diffusion:
-    _target_: src.callbacks.TestInitialDiffusionCB
-    num_rows: 5
 
 model:
-  _target_: src.lightning_modules.TRDSB
+  _target_: src.lightning_modules.FRDSB
   max_gamma: 0.1
   min_gamma: 0.01
   num_steps: 30
-  T: 1.5
+  T: 1.0
   patience: 5
-  max_iterations: 2000
-  max_norm: 1.0
-  initial_forward_sampling: "diffuse"
+  max_iterations: 4000
+  max_norm: 100.0
+  initial_forward_sampling: "ornstein_1"
 
   forward_model:
     in_channels: 1
@@ -59,14 +57,14 @@ model:
   optimizer:
     _target_: torch.optim.AdamW
     _partial_: True
-    lr: 0.001
+    lr: 1e-4
 
   scheduler:
-    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
     _partial_: True
-    mode: 'min'
-    factor: 0.5
-    patience: 2
+    T_0: 400
+    T_mult: 1
+    eta_min: 1e-5
 
 data:
   cache_num_iters: 40
