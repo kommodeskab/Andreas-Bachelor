@@ -10,19 +10,28 @@ class BaseDSBDM(pl.LightningDataModule):
         start_dataset : Dataset,
         end_dataset : Dataset,
         cache_num_iters : int,
+        start_dataset_val : Dataset = None,
+        end_dataset_val : Dataset = None,
         train_val_split : float = 0.95,
         batch_size : int = 10,
         num_workers: int = 4,
         ):
-        
         super().__init__()
         self.save_hyperparameters(ignore=["start_dataset", "end_dataset"])
         self.hparams["training_backward"] = True
         
         self.start_dataset = start_dataset
         self.end_dataset = end_dataset
-        self.start_dataset_train, self.start_dataset_val = random_split(start_dataset, [train_val_split, 1 - train_val_split])
-        self.end_dataset_train, self.end_dataset_val = random_split(end_dataset, [train_val_split, 1 - train_val_split])
+        
+        if start_dataset_val is None:
+            self.start_dataset_train, self.start_dataset_val = random_split(start_dataset, [train_val_split, 1 - train_val_split])
+        else:
+            self.start_dataset_train, self.start_dataset_val = start_dataset, start_dataset_val
+        
+        if end_dataset_val is None:
+            self.end_dataset_train, self.end_dataset_val = random_split(end_dataset, [train_val_split, 1 - train_val_split])
+        else:
+            self.end_dataset_train, self.end_dataset_val = end_dataset, end_dataset_val
         
         self.loader_kwargs = {
             "batch_size" : batch_size,

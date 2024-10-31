@@ -25,6 +25,7 @@ def my_app(cfg : DictConfig) -> None:
         version=get_current_time(), 
         )
     logger.experiment.config["cfg"] = cfg_yaml
+    print(f"Config:\n\n{cfg_yaml}")
     
     print("Instantiating model and datamodule..")
     datamodule = hydra.utils.instantiate(cfg.data)
@@ -34,7 +35,6 @@ def my_app(cfg : DictConfig) -> None:
     if cfg.compile:
         torch.compile(model)
     
-    print(f"Config:\n\n{cfg_yaml}")
     
     print("Instantiating callbacks..")
     callbacks = instantiate_callbacks(cfg.get("callbacks", None))

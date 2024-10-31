@@ -4,3 +4,4 @@ from .celeba import CelebADataset, CelebANoLabel, FilteredByAttrCelebA
 from .basedataset import BaseDataset
 from .text import TextDataset
 from .afhq import AFHQ
+from .audio import Noise, Clean

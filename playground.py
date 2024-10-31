@@ -1,11 +1,41 @@
-from src.lightning_modules.reparameterized_dsb import TRDSB
-from src.dataset.emnist import EMNISTNoLabel
-from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
+import random
+import torch
+from torch import Tensor
+from typing import List, Tuple
 
-dsb = TRDSB(forward_model=None, backward_model=None, optimizer=None, scheduler=None, max_gamma=0.1, min_gamma=0.001, num_steps=100, initial_forward_sampling="ornstein_uhlenbeck")
-dataset = EMNISTNoLabel(split="letters", img_size=32)
-batch = next(iter(DataLoader(dataset, batch_size=100)))
-sampled = dsb.sample(batch, forward=True, return_trajectory=False)
-sampled = sampled.flatten(1)
-print(sampled.mean(1))
+class Cache:
+    def __init__(self, max_size : int):
+        self.cache = []
+        self.max_size = max_size
+        
+    def add(self, sample: Tuple[Tensor, Tensor]):
+        """
+        Add a sample to the cache.
+        """
+        if len(self) >= self.max_size:
+            self.cache.pop(0)
+            
+        self.cache.append(sample)
+        
+    def sample(self) -> Tuple[Tensor, Tensor]:
+        """
+        Randomly sample a sample from the cache. The sample is removed from the cache.
+        """
+        randint = random.randint(0, len(self.cache) - 1)
+        return self.cache[randint]
+        
+    def __len__(self):
+        return len(self.cache)
+    
+    def __str__(self):
+        return self.cache.__str__()
+
+cache = Cache(max_size = 10)
+for i in range(20):
+    cache.add(random.randint(0, 10))
+    print(cache)
+    
+sample = cache.sample()
+print(sample)
+print(len(cache))
+print(cache)

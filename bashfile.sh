@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # SET JOB NAME
-#BSUB -J male_to_female
+#BSUB -J s_to_b
 
 # select gpu, choose gpuv100 or gpua100 (best)
 #BSUB -q gpuv100
@@ -13,15 +13,15 @@
 #BSUB -n 4
 
 # gb memory per core
-#BSUB -R "rusage[mem=16G]"
+#BSUB -R "rusage[mem=4G]"
 # cores is on the same slot
 #BSUB -R "span[hosts=1]"
 
 # walltime
-#BSUB -W 24:00
+#BSUB -W 3:00
 #BSUB -o hpc/output_%J.out 
 #BSUB -e hpc/error_%J.err 
 
 module load python3/3.12.4
 source .venv/bin/activate
-python train.py +experiment=male_to_female logger.offline=False
+python train.py +experiment=s_to_b logger.offline=False

@@ -10,8 +10,10 @@ project_name: 'chess_to_square'
 task_name: 'test'
 
 trainer:
-  val_check_interval: 2000
+  val_check_interval: 300
   log_every_n_steps: 20
+  limit_val_batches: 5
+  max_epochs: 200
 
 data:
   cache_num_iters: 50
@@ -29,20 +31,27 @@ model:
   backward_model:
     n_cond: 101
 
-  max_gamma: 0.1
-  min_gamma: 0.001
-  num_steps: 50
-  max_iterations: 32000
-  max_norm: 3
+  max_gamma: 1.0
+  min_gamma: 0.01
+  num_steps: 100
+  T: 1.0
+  lr_multiplier: 0.75
+  min_init_lr: 1e-7
+  patience: 5
+  cache_max_size: 50
+  max_iterations: 30000
+  min_iterations: 5000
+  max_norm: 1.0
+  initial_forward_sampling: "ornstein_0"
 
   optimizer:
-    _target_: torch.optim.Adam
+    _target_: torch.optim.AdamW
     _partial_: True
-    lr: 0.001
+    lr: 1e-4
 
   scheduler:
     _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
     _partial_: True
     mode: 'min'
     factor: 0.5
-    patience: 5
+    patience: 3

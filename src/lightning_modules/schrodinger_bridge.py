@@ -4,12 +4,37 @@ from torch import Tensor
 from src.lightning_modules.baselightningmodule import BaseLightningModule
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
-from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, ReduceLROnPlateau
+from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, ReduceLROnPlateau, ConstantLR
 from torch.nn import Module
 import torch.nn.init as init
 import torch.nn as nn
 from torch_ema import ExponentialMovingAverage
 from pytorch_lightning.utilities import grad_norm
+import random
+
+class Cache:
+    def __init__(self, max_size : int):
+        self.cache = []
+        self.max_size = max_size
+        
+    def add(self, sample: Tensor) -> None:
+        """
+        Add a sample to the cache.
+        """
+        if len(self) >= self.max_size:
+            del self.cache[0]
+            
+        self.cache.append(sample)
+        
+    def sample(self) -> Tensor:
+        """
+        Randomly sample a sample from the cache. The sample is removed from the cache.
+        """
+        randint = random.randint(0, len(self.cache) - 1)
+        return self.cache[randint]
+        
+    def __len__(self) -> int:
+        return len(self.cache)
 
 class StandardDSB(BaseLightningModule):
     def __init__(
@@ -21,7 +46,10 @@ class StandardDSB(BaseLightningModule):
         max_gamma : float,
         min_gamma : float,
         num_steps : int,
+        cache_max_size : int,
         T : int | None = None,
+        lr_multiplier : float = 1.0,
+        min_init_lr : float = 0.0,
         patience : int | None = None,
         max_iterations : int | None = None,
         max_dsb_iterations : int | None = 20,
@@ -35,7 +63,7 @@ class StandardDSB(BaseLightningModule):
         
         super().__init__()
         self.automatic_optimization = False
-        self.save_hyperparameters(ignore = ["forward_model", "backward_model", "optimizer"])
+        self.save_hyperparameters(ignore = ["forward_model", "backward_model", "optimizer", "scheduler"])
         self.hparams.update({
             "training_backward": True,
             "curr_num_iters": 0,
@@ -74,6 +102,7 @@ class StandardDSB(BaseLightningModule):
         self.partial_scheduler = scheduler
         
         self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()  
+        self.cache = Cache(max_size = self.hparams.cache_max_size)
         
     def init_weights(self):
         """
@@ -156,11 +185,11 @@ class StandardDSB(BaseLightningModule):
             self.hparams.val_losses = []
             self.hparams.training_backward = not self.hparams.training_backward
             self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
+            self.cache.cache = []
 
             if self.hparams.training_backward: 
                 self.hparams.DSB_iteration += 1
-                
-                # resetting the optimizer and scheduler
+                # resetting the optimizers and schedulers
                 self._reset_optim_and_scheduler()
 
             return -1
@@ -172,6 +201,7 @@ class StandardDSB(BaseLightningModule):
         optimizers, schedulers = self.configure_optimizers()
         self.trainer.optimizers[0] = optimizers[0]
         self.trainer.optimizers[1] = optimizers[1]
+        
         self.trainer.lr_scheduler_configs[0].scheduler = schedulers[0]['scheduler']
         self.trainer.lr_scheduler_configs[1].scheduler = schedulers[1]['scheduler']
     
@@ -202,11 +232,7 @@ class StandardDSB(BaseLightningModule):
         mu = (1 - alpha * self.gammas[k + 1]) * xk
         sigma = torch.sqrt(2 * self.gammas[k + 1])
         return mu + sigma * torch.randn_like(xk)
-    
-    def brownian(self, xk : Tensor, k : int) -> Tensor:
-        sigma = torch.sqrt(2 * self.gammas[k + 1])
-        return xk + sigma * torch.randn_like(xk)
-    
+
     def _initial_go_forward(self, xk : Tensor, k : int) -> Tensor:
         if self.hparams.initial_forward_sampling is None:
             return self.go_forward(xk, k)
@@ -215,9 +241,6 @@ class StandardDSB(BaseLightningModule):
             # the string comes in the format "ornstein_0.5"
             alpha = float(self.hparams.initial_forward_sampling.split("_")[1])
             return self.ornstein_uhlenbeck(xk, k, alpha)
-        
-        if self.hparams.initial_forward_sampling == "brownian":
-            return self.brownian(xk, k)
         
         raise ValueError(f"Invalid initial_forward_sampling: {self.hparams.initial_forward_sampling}")
         
@@ -348,10 +371,10 @@ class StandardDSB(BaseLightningModule):
         # therefore, most batches will be 0 (meaning we need to use cache)
         # if the batch is not 0, and therefore a tensor, then we create a new cache
         if not isinstance(batch, int):
-            self.cache = self.sample(batch, forward = training_backward, return_trajectory = True)
-        
-        # trajectory.shape = (num_steps + 1, batch_size, *x_start.size())
-        trajectory = self.cache
+            trajectory = self.sample(batch, forward = training_backward, return_trajectory = True)
+            self.cache.add(trajectory)
+        else:
+            trajectory = self.cache.sample()
         
         x0, xN = trajectory[0], trajectory[-1]
         batch_size = trajectory.size(1)
@@ -378,12 +401,12 @@ class StandardDSB(BaseLightningModule):
             raise ValueError(f"Loss is nan: {loss.item() = }")
         
         if loss.item() > 1e6:
-            print(f"Loss is too high: {loss.item()}")
+            raise ValueError(f"Loss is too high: {loss.item() = }")
 
         # clip gradients and log gradients
         model_name = "backward_model" if training_backward else "forward_model"
         norm = grad_norm(model, norm_type=2).get('grad_2.0_norm_total', 0)
-        self.log(f"{model_name}_grad_norm_before_clip", norm, prog_bar=True)
+        self.log(f"{model_name}_grad_norm_before_clip", norm)
         self.clip_gradients(optimizer, self.hparams.max_norm, "norm")
 
         # step the optimizer and update the ema
@@ -392,10 +415,12 @@ class StandardDSB(BaseLightningModule):
         self.log(self._get_loss_name(is_backward = training_backward, is_training = True), loss.item(), prog_bar=True)
         
         # update scheduler
-        if isinstance(lr_scheduler, CosineAnnealingWarmRestarts):
+        if isinstance(lr_scheduler, (CosineAnnealingWarmRestarts, ConstantLR)):
             lr_scheduler.step(self.hparams.curr_num_iters)
 
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> Tensor:
+        self.eval()
+        
         if self.hparams.training_backward and dataloader_idx == 0:
             trajectory = self.sample(batch, forward = True, return_trajectory = True)
             batch_size = trajectory.size(1)
@@ -435,12 +460,24 @@ class StandardDSB(BaseLightningModule):
             scheduler.step(val_loss)
     
     def configure_optimizers(self):
+        # make the optimizers
         backward_opt = self.partial_optimizer(self.backward_model.parameters())
         forward_opt = self.partial_optimizer(self.forward_model.parameters())
+
+        # the learning rate should drop every DSB iteration
+        dsb_iteration = self.hparams.DSB_iteration
+        lr_multiplier = self.hparams.lr_multiplier
+        min_init_lr = self.hparams.min_init_lr
+        
+        lr = backward_opt.param_groups[0]['lr']
+        new_lr = max(lr * lr_multiplier ** (dsb_iteration - 1), min_init_lr)
+        backward_opt.param_groups[0]['lr'] = new_lr
+        forward_opt.param_groups[0]['lr'] = new_lr
+
         backward_scheduler = {'scheduler': self.partial_scheduler(backward_opt), 'name': 'lr_scheduler_backward'}
         forward_scheduler = {'scheduler': self.partial_scheduler(forward_opt), 'name': 'lr_scheduler_forward'}
         
         sch = backward_scheduler['scheduler']
-        assert isinstance(sch, (CosineAnnealingWarmRestarts, ReduceLROnPlateau)), f"The scheduler must be either CosineAnnealingWarmRestarts or ReduceLROnPlateau, but got {type(sch)}"
+        assert isinstance(sch, (CosineAnnealingWarmRestarts, ReduceLROnPlateau, ConstantLR)), f"The scheduler must be either CosineAnnealingWarmRestarts or ReduceLROnPlateau, but got {type(sch)}"
         
         return [backward_opt, forward_opt], [backward_scheduler, forward_scheduler]

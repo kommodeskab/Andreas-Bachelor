@@ -16,8 +16,9 @@ class AFHQ(BaseDataset):
                 - dog
                 - wild
     """
-    def __init__(self, split : str, img_size : int = 128):
-        root = os.path.join("data", "afhq/train", split)
+    def __init__(self, split : str, img_size : int = 128, train : bool = True):
+        train = "train" if train else "val"
+        root = os.path.join(f"data/afhq/{train}", split)
         self.files = [os.path.join(root, file) for file in os.listdir(root)]
         self.img_size = img_size
         self.transform = transforms.Compose([

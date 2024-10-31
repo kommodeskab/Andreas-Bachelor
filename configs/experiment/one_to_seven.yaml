@@ -7,32 +7,35 @@ defaults:
   - override /logger: default
 
 project_name: 'one_to_seven'
-task_name: 'FR_test'
+task_name: 'tr_ornstein'
 
 trainer:
   val_check_interval: 400
   log_every_n_steps: 20
   max_epochs: 100
-  limit_val_batches: 1
+  limit_val_batches: 5
 
 callbacks:
   mmc:
     _target_: src.callbacks.MMDCB
     num_samples: 1000
-  fid:
-    _target_: src.callbacks.CalculateFID
-    num_samples: 1000
+#   fid:
+#     _target_: src.callbacks.CalculateFID
+#     num_samples: 1000
 
 model:
-  _target_: src.lightning_modules.FRDSB
+  _target_: src.lightning_modules.TRDSB
   max_gamma: 0.1
   min_gamma: 0.01
   num_steps: 30
   T: 1.0
   patience: 5
-  max_iterations: 4000
-  max_norm: 100.0
-  initial_forward_sampling: "ornstein_1"
+  max_iterations: 250
+  lr_multiplier: 0.9
+  min_init_lr: 1e-6
+  cache_max_size: 50
+  max_norm: 1.0
+  initial_forward_sampling: "ornstein_0"
 
   forward_model:
     in_channels: 1
@@ -62,9 +65,9 @@ model:
   scheduler:
     _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
     _partial_: True
-    T_0: 400
+    T_0: 100
     T_mult: 1
-    eta_min: 1e-5
+    eta_min: 1e-6
 
 data:
   cache_num_iters: 40

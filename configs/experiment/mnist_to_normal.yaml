@@ -15,24 +15,17 @@ trainer:
   max_epochs: 200
   limit_val_batches: 5
 
-callbacks:
-  mmc:
-    _target_: src.callbacks.MMDCB
-    num_samples: 1000
-  fid:
-    _target_: src.callbacks.CalculateFID
-    num_samples: 1000
-
 model:
   _target_: src.lightning_modules.TRDSB
-  max_gamma: 0.1
-  min_gamma: 0.001
+  max_gamma: 1.0
+  min_gamma: 0.01
   num_steps: 30
-  T: 1.5
-  patience: 4
-  max_iterations: 20000
-  initial_forward_sampling: "diffuse"
-  max_norm: 3.0
+  T: 1.0
+  patience: 5
+  cache_max_size: 50
+  max_iterations: 20001
+  initial_forward_sampling: "ornstein_1"
+  max_norm: 1.0
 
   forward_model:
     sample_size: [32, 32]
@@ -62,7 +55,7 @@ model:
     _partial_: True
     mode: 'min'
     factor: 0.5
-    patience: 3
+    patience: 2
 
 data:
   cache_num_iters: 50

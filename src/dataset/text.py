@@ -14,7 +14,7 @@ class TextDataset(BaseDataset):
         font_size = 150
         img = Image.new('L', img_size, color = 255)
         d = ImageDraw.Draw(img)
-        font = ImageFont.truetype("arial.ttf", font_size)
+        font = ImageFont.load_default(size=font_size)
         d.text((0, 0), text, font=font, fill=0)
         img = 1 - np.array(img) / 255
         img = img[img.any(axis=1)]

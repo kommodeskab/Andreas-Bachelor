@@ -44,6 +44,11 @@ class MMDCB(pl.Callback):
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         self.xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, self.num_samples).to(pl_module.device)
         self.x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_samples).to(pl_module.device)
+        
+        # calculate "baseline" MMD
+        # split x0 into two halves
+        x0_1, x0_2 = torch.split(self.x0, self.x0.shape[0] // 2)
+        self.mmd_baseline = MMD(x0_1, x0_2, "rbf").item()
 
     def on_train_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
@@ -51,4 +56,7 @@ class MMDCB(pl.Callback):
         if not pl_module.hparams.training_backward:
             x0_pred = pl_module.sample(self.xN, forward = False)
             mmd_value = MMD(x0_pred, self.x0, "rbf").item()
-            pl_module.logger.log_metrics({"benchmarks/MMD": mmd_value, "Iteration": iteration})
+            pl_module.logger.log_metrics({
+                "benchmarks/MMD": mmd_value, 
+                "benchmarks/MMD_baseline": self.mmd_baseline,
+                "Iteration": iteration})

@@ -1,7 +1,7 @@
 # @package _global_
 defaults:
   - override /trainer: gpu
-  - override /data: s_to_line
+  - override /data: s_to_line_data
   - override /callbacks: schrodinger2d
   - override /model: twod
   - override /logger: default
@@ -10,11 +10,13 @@ project_name: 'Line to S'
 task_name: 'test'
 
 trainer:
-  val_check_interval: 200
+  val_check_interval: 500
   log_every_n_steps: 20
+  limit_val_batches: 5
+  max_epochs: 200
 
 data:
-  cache_num_iters: 10
+  cache_num_iters: 50
 
 callbacks:
   mmc:
@@ -22,16 +24,34 @@ callbacks:
     num_samples: 1000
 
 model:
+  _target_: src.lightning_modules.FRDSB
   forward_model:
     n_cond: 101
 
   backward_model:
     n_cond: 101
 
-  max_gamma: 0.01
+  max_gamma: 1.0
   min_gamma: 0.01
   num_steps: 100
-  max_iterations: 2000
-  strict_gammas: True
-  max_norm: 1
-  initial_forward_sampling: "ornstein_uhlenbeck"
+  T: 1.0
+  lr_multiplier: 0.75
+  min_init_lr: 1e-7
+  patience: 5
+  cache_max_size: 50
+  max_iterations: 30000
+  min_iterations: 5000
+  max_norm: 1.0
+  initial_forward_sampling: "ornstein_1"
+
+  optimizer:
+    _target_: torch.optim.AdamW
+    _partial_: True
+    lr: 1e-4
+
+  scheduler:
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    _partial_: True
+    mode: 'min'
+    factor: 0.5
+    patience: 3

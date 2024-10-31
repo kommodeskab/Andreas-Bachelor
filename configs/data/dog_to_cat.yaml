@@ -4,10 +4,23 @@ start_dataset:
   _target_: src.dataset.AFHQ
   split: 'dog'
   img_size: 32
+  train: True
+start_dataset_val:
+  _target_: src.dataset.AFHQ
+  split: 'dog'
+  img_size: 32
+  train: False
+
 end_dataset:
   _target_: src.dataset.AFHQ
   split: 'cat'
   img_size: 32
+  train: True
+end_dataset_val:
+  _target_: src.dataset.AFHQ
+  split: 'cat'
+  img_size: 32
+  train: False
   
 batch_size: 256
 cache_num_iters: 100
