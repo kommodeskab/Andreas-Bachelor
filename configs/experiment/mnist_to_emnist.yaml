@@ -8,6 +8,7 @@ defaults:
 
 project_name: 'mnist_to_emnist'
 task_name: 'test'
+size: 32
 
 trainer:
   val_check_interval: 1000
@@ -16,66 +17,45 @@ trainer:
   limit_val_batches: 5
 
 callbacks:
-  mmc:
-    _target_: src.callbacks.MMDCB
-    num_samples: 1000
   fid:
     _target_: src.callbacks.CalculateFID
     num_samples: 1000
-  initial_diffusion:
-    _target_: src.callbacks.TestInitialDiffusionCB
-    num_rows: 5
+  
+data:
+  start_dataset:
+    img_size: ${size}
+  end_dataset:
+    img_size: ${size}
+  batch_size: 256
+  num_workers: 4
 
 model:
-  _target_: src.lightning_modules.FRDSB
-  max_gamma: 0.1
-  min_gamma: 0.001
+  max_gamma: 1.0
+  min_gamma: 0.01
   num_steps: 30
   T: 1.5
-  patience: 5
-  max_iterations: 20000
-  initial_forward_sampling: "diffuse"
+  cache_max_size: 50
+  cache_num_iters: 30
+  max_iterations: 10000
+  initial_forward_sampling: "ornstein_0"
   max_norm: 1.0
 
   forward_model:
-    sample_size: [16, 16]
     in_channels: 1
     out_channels: 1
-    dropout: 0.1
-    block_out_channels: [32, 32, 32]
-    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
-    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
+    block_out_channels: [32, 64, 128]
   
   backward_model:
-    sample_size: [16, 16]
     in_channels: 1
     out_channels: 1
-    dropout: 0.1
-    block_out_channels: [32, 32, 32]
-    down_block_types: ["DownBlock2D", "DownBlock2D", "DownBlock2D"]
-    up_block_types: ["UpBlock2D", "UpBlock2D", "UpBlock2D"]
+    block_out_channels: [32, 64, 128]
 
   optimizer:
-    _target_: torch.optim.AdamW
-    _partial_: True
-    lr: 0.0001
+    lr: 1e-4
 
   scheduler:
     _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
     _partial_: True
-    T_0: 1000
-    T_mult: 2
-
-data:
-  cache_num_iters: 100
-  batch_size: 128
-
-  start_dataset:
-    _target_: src.dataset.EMNISTNoLabel
-    split: 'letters'
-    img_size: 16
-
-  end_dataset:
-    _target_: src.dataset.EMNISTNoLabel
-    split: 'digits'
-    img_size: 16
+    T_0: 500
+    T_mult: 1
+    eta_min: 1e-6

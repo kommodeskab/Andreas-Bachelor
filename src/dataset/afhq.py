@@ -1,5 +1,4 @@
 import os
-from torch.utils.data import Dataset
 from torchvision import transforms
 from PIL import Image
 import torch
@@ -39,5 +38,5 @@ class AFHQ(BaseDataset):
 if __name__ == "__main__":
     dataset = AFHQ(split="cat")
     print(len(dataset))
-    print(dataset[0].shape)
-    print(dataset[0].min(), dataset[0].max())
+    dataset = AFHQ(split="dog")
+    print(len(dataset))

@@ -7,61 +7,46 @@ defaults:
   - override /model: big_images
 
 project_name: 'male_to_female'
-task_name: 'more_steps'
+task_name: 'test'
 
 trainer:
-  val_check_interval: 1000
+  val_check_interval: 2000
   log_every_n_steps: 40
   max_epochs: 200
   limit_val_batches: 5
 
+data:
+  batch_size: 128
+  num_workers: 4
+
 model:
-  _target_: src.lightning_modules.PPTRDSBClosestPoint
+  _target_: src.lightning_modules.TRDSB
   max_gamma: 1.0
-  min_gamma: 0.01
+  min_gamma: 0.1
   num_steps: 100
   T: 1.5
-  lr_multiplier: 1.0
-  min_init_lr: 1e-6
-  patience: 5
-  cache_max_size: 50
-  max_iterations: 25001
-  min_iterations: 10000
+  cache_max_size: 100
+  cache_num_iters: 50
+  max_iterations: [30000, 25000, 20000, 15000]
+  initial_forward_sampling: "ornstein_0"
   max_norm: 1.0
 
   forward_model:
-    dropout: 0.1
-    sample_size: [32, 32]
-    in_channels: 3
-    out_channels: 3
-    layers_per_block: 2
-    block_out_channels: [64, 128, 256]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
-  
+    block_out_channels: [64, 128, 256, 512]
+    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
+    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+
   backward_model:
-    dropout: 0.1
-    sample_size: [32, 32]
-    in_channels: 3
-    out_channels: 3
-    layers_per_block: 2
-    block_out_channels: [64, 128, 256]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+    block_out_channels: [64, 128, 256, 512]
+    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
+    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
 
   optimizer:
-    _target_: torch.optim.AdamW
-    _partial_: True
     lr: 1e-4
 
   scheduler:
     _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
     _partial_: True
-    T_0: 500
+    T_0: 1000
     T_mult: 1
     eta_min: 1e-6
-
-data:
-  cache_num_iters: 100
-  batch_size: 128
-  num_workers: 4

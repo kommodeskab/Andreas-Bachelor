@@ -10,18 +10,15 @@ project_name: 'S to B'
 task_name: 'test'
 
 trainer:
-  val_check_interval: 500
-  log_every_n_steps: 20
+  val_check_interval: 200
+  log_every_n_steps: 10
   limit_val_batches: 5
   max_epochs: 200
-
-data:
-  cache_num_iters: 10
 
 callbacks:
   mmc:
     _target_: src.callbacks.MMDCB
-    num_samples: 1000
+    num_samples: 2000
 
 model:
   _target_: src.lightning_modules.FRDSB
@@ -29,14 +26,14 @@ model:
     n_cond: 101
     dim_in: 2
     dim_out: 2
-    dim_hidden: 128
+    dim_hidden: 64
     num_layers: 3
 
   backward_model:
     n_cond: 101
     dim_in: 2
     dim_out: 2
-    dim_hidden: 128
+    dim_hidden: 64
     num_layers: 3
 
   max_gamma: 1.0
@@ -44,11 +41,11 @@ model:
   num_steps: 100
   T: 1.0
   lr_multiplier: 1.0
+  cache_num_iters: 1000
   cache_max_size: 50
   max_iterations: 5000
-  min_iterations: 1000
   max_norm: 1.0
-  initial_forward_sampling: "ornstein_0"
+  initial_forward_sampling: "ornstein_1"
 
   optimizer:
     _target_: torch.optim.AdamW

@@ -9,7 +9,6 @@ class BaseDSBDM(pl.LightningDataModule):
         self,
         start_dataset : Dataset,
         end_dataset : Dataset,
-        cache_num_iters : int,
         start_dataset_val : Dataset = None,
         end_dataset_val : Dataset = None,
         train_val_split : float = 0.95,
@@ -17,8 +16,7 @@ class BaseDSBDM(pl.LightningDataModule):
         num_workers: int = 4,
         ):
         super().__init__()
-        self.save_hyperparameters(ignore=["start_dataset", "end_dataset"])
-        self.hparams["training_backward"] = True
+        self.save_hyperparameters(ignore=["start_dataset", "end_dataset", "start_dataset_val", "end_dataset_val"])
         
         self.start_dataset = start_dataset
         self.end_dataset = end_dataset
@@ -43,7 +41,12 @@ class BaseDSBDM(pl.LightningDataModule):
     def train_dataloader(self):
         training_backward = self.hparams.training_backward
         dataset = self.start_dataset_train if training_backward else self.end_dataset_train
-        return CacheDataLoader(dataset = dataset, cache_num_iters = self.hparams.cache_num_iters, shuffle = True, **self.loader_kwargs)
+        return CacheDataLoader(
+            cache_num_iters = self.hparams.cache_num_iters, 
+            dataset = dataset, 
+            shuffle = True,
+            **self.loader_kwargs
+            )
         
     def val_dataloader(self):
         return [

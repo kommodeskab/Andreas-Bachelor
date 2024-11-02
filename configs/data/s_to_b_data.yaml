@@ -9,6 +9,5 @@ end_dataset:
   text: B
   size: 50_000
   
-cache_num_iters: 500
 batch_size: 512
 num_workers: 8

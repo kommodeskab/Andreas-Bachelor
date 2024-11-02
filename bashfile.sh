@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # SET JOB NAME
-#BSUB -J s_to_b
+#BSUB -J male2
 
 # select gpu, choose gpuv100 or gpua100 (best)
 #BSUB -q gpuv100
@@ -24,4 +24,4 @@
 
 module load python3/3.12.4
 source .venv/bin/activate
-python train.py +experiment=s_to_b logger.offline=False
+python train.py -m +experiment=gaussian_test dim=64,256,1024

@@ -5,6 +5,7 @@ from omegaconf import OmegaConf
 from src.utils import get_ckpt_path, instantiate_callbacks, get_current_time
 import pytorch_lightning as pl
 import os, hydra, torch
+import wandb
 
 os.environ["HYDRA_FULL_ERROR"] = "1"
 os.environ["USE_FLASH_ATTENTION"] = "1"
@@ -48,6 +49,7 @@ def my_app(cfg : DictConfig) -> None:
         
     print("Beginning training..")
     trainer.fit(model, datamodule)
+    wandb.finish()
 
 if __name__ == "__main__":
     my_app()

@@ -22,7 +22,5 @@ end_dataset_val:
   img_size: 32
   train: False
   
-batch_size: 256
-cache_num_iters: 100
+batch_size: 64
 num_workers: 4
-train_val_split: 0.9

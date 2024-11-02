@@ -1,5 +1,5 @@
 import torch
-from typing import Tuple, Any, Callable, Literal
+from typing import Tuple, Any, Callable, Literal, List
 from torch import Tensor
 from src.lightning_modules.baselightningmodule import BaseLightningModule
 from torch.optim import Optimizer
@@ -47,15 +47,16 @@ class StandardDSB(BaseLightningModule):
         min_gamma : float,
         num_steps : int,
         cache_max_size : int,
+        cache_num_iters : int,
         T : int | None = None,
         lr_multiplier : float = 1.0,
         min_init_lr : float = 0.0,
-        patience : int | None = None,
-        max_iterations : int | None = None,
+        patience : int = float("inf"),
+        max_iterations : int | list = float("inf"),
+        min_iterations : int | list = 0,
         max_dsb_iterations : int | None = 20,
-        min_iterations : int = 1,
         max_norm : float = float("inf"),
-        initial_forward_sampling: Literal["diffuse", "brownian"] | None = None,
+        initial_forward_sampling: str | None = None,
     ):
         """
         Initializes the StandardDSB model
@@ -90,6 +91,11 @@ class StandardDSB(BaseLightningModule):
             gammas *= T / gammas.sum()
         else:
             self.hparams.T = gammas.sum()
+            
+        if isinstance(max_iterations, int):
+            self.hparams.max_iterations = [max_iterations]
+        if isinstance(min_iterations, int):
+            self.hparams.min_iterations = [min_iterations]
 
         self.gammas = gammas
         self.gammas_bar = torch.cumsum(self.gammas, 0)
@@ -134,37 +140,46 @@ class StandardDSB(BaseLightningModule):
         backward_params = [p for p in self.backward_model.parameters() if p.requires_grad]
         self.forward_ema = ExponentialMovingAverage(forward_params, decay = 0.9999)
         self.backward_ema = ExponentialMovingAverage(backward_params, decay = 0.9999)
-    
-    def on_train_epoch_start(self) -> None:
-        # check if the training direction is the same for the model and the datamodule
-        assert self.trainer.datamodule.hparams.training_backward == self.hparams.training_backward, "The training direction must be the same for datamodule and model"
-    
+
+        self.trainer.datamodule.hparams.cache_num_iters = self.hparams.cache_num_iters
+        self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
+        self.trainer.datamodule.hparams.cache_max_size = self.hparams.cache_max_size
+
     def _has_converged(self) -> bool:
+        def get_iteration_element(dsb_iteration : int, iterations_list : list[int]) -> int:
+            idx = min(dsb_iteration - 1, len(iterations_list) - 1)
+            return iterations_list[idx]
+        
         params = self.hparams
-        max_iters, min_iters, patience, curr_iters = params.max_iterations, params.min_iterations, params.patience, params.curr_num_iters
+        max_iters, min_iters, patience, curr_iters, dsb_iteration, val_losses = (
+            params.max_iterations, 
+            params.min_iterations, 
+            params.patience, 
+            params.curr_num_iters,
+            params.DSB_iteration,
+            params.val_losses
+        )
+        max_iters = get_iteration_element(dsb_iteration, max_iters)
+        min_iters = get_iteration_element(dsb_iteration, min_iters)
+        
         has_converged = False
 
-        if self.hparams.max_dsb_iterations is not None:
-            if self.hparams.DSB_iteration > self.hparams.max_dsb_iterations:
-                print("Stopping training as max_dsb_iterations has been reached")
-                exit()
+        if dsb_iteration > self.hparams.max_dsb_iterations:
+            print("Stopping training as max_dsb_iterations has been reached")
+            return True
 
-        if patience is not None:
-            val_losses = params.val_losses
-            if len(val_losses) > patience: 
-                prior_losses = val_losses[:-patience]
-                min_prior_loss = min(prior_losses)
-                recent_losses = val_losses[-patience:]
-                if all(l > min_prior_loss for l in recent_losses):
-                    has_converged = True
-        
-        if max_iters is not None:
-            if curr_iters >= max_iters:
+        if len(val_losses) > patience: 
+            prior_losses = val_losses[:-patience]
+            min_prior_loss = min(prior_losses)
+            recent_losses = val_losses[-patience:]
+            if all(l > min_prior_loss for l in recent_losses):
                 has_converged = True
+        
+        if curr_iters >= max_iters:
+            has_converged = True
 
-        if min_iters is not None:
-            if curr_iters < min_iters:
-                has_converged = False
+        if curr_iters < min_iters:
+            has_converged = False
 
         return has_converged
 
@@ -371,7 +386,7 @@ class StandardDSB(BaseLightningModule):
         # therefore, most batches will be 0 (meaning we need to use cache)
         # if the batch is not 0, and therefore a tensor, then we create a new cache
         if not isinstance(batch, int):
-            trajectory = self.sample(batch, forward = training_backward, return_trajectory = True)
+            trajectory = self.sample(batch, forward = training_backward, return_trajectory = True, ema_scope=True)
             self.cache.add(trajectory)
         else:
             trajectory = self.cache.sample()
@@ -422,7 +437,7 @@ class StandardDSB(BaseLightningModule):
         self.eval()
         
         if self.hparams.training_backward and dataloader_idx == 0:
-            trajectory = self.sample(batch, forward = True, return_trajectory = True)
+            trajectory = self.sample(batch, forward = True, return_trajectory = True, ema_scope=True)
             batch_size = trajectory.size(1)
             x0 = trajectory[0]
 
@@ -432,7 +447,7 @@ class StandardDSB(BaseLightningModule):
                 self.log(self._get_loss_name(is_backward = True, is_training = False), loss.item(), prog_bar=True, add_dataloader_idx=False)
 
         elif not self.hparams.training_backward and dataloader_idx == 1:
-            trajectory = self.sample(batch, forward = False, return_trajectory = True)
+            trajectory = self.sample(batch, forward = False, return_trajectory = True, ema_scope=True)
             batch_size = trajectory.size(1)
             xN = trajectory[-1]
 

@@ -9,6 +9,5 @@ end_dataset:
   attr: 20
   on_or_off: 0
   
-cache_num_iters: 100
 batch_size: 128
 num_workers: 8

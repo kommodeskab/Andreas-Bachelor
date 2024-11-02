@@ -55,10 +55,7 @@ class FilteredByAttrCelebA(CelebANoLabel):
         return super().__getitem__(idx)
     
 if __name__ == "__main__":
-    dataset = FilteredByAttrCelebA(attr=31, on_or_off=0)
-    fig, axs = plt.subplots(1, 10, figsize=(20, 2))
-    for i, ax in enumerate(axs):
-        ax.imshow(dataset[i].permute(1, 2, 0).squeeze() * 0.5 + 0.5)
-    plt.savefig("data/samples/filtered_celeba_no_smiling.png")
+    dataset = FilteredByAttrCelebA(attr=20, on_or_off=1)
+    print(len(dataset))
 
         
