@@ -1,7 +1,7 @@
 #!/bin/sh
 
 # SET JOB NAME
-#BSUB -J male2
+#BSUB -J s2b
 
 # select gpu, choose gpuv100 or gpua100 (best)
 #BSUB -q gpuv100
@@ -24,4 +24,5 @@
 
 module load python3/3.12.4
 source .venv/bin/activate
-python train.py -m +experiment=gaussian_test dim=64,256,1024
+python train.py +experiment=s_to_b model._target_=src.lightning_modules.FRDSB task_name=FR
+python train.py +experiment=s_to_b model._target_=src.lightning_modules.TRDSB task_name=TR

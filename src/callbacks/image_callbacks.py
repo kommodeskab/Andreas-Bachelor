@@ -51,9 +51,14 @@ class MarginalDistributionsImagesCB(pl.Callback):
         plt.close("all")
 
 class PlotImageSamplesCB(pl.Callback):
-    def __init__(self, num_rows : int = 5):
+    def __init__(
+        self, 
+        num_rows : int = 5,
+        ema_scope : bool = True
+        ):
         super().__init__()
         self.num_rows = num_rows
+        self.ema_scope = ema_scope
 
     def on_validation_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         pl_module.eval()
@@ -62,9 +67,11 @@ class PlotImageSamplesCB(pl.Callback):
 
         is_backward = pl_module.hparams.training_backward
         title = "Backward" if is_backward else "Forward"
+        if self.ema_scope:
+            title += "_ema"
         original_dataset = trainer.datamodule.end_dataset_val if is_backward else trainer.datamodule.start_dataset_val
         original_xs = get_batch_from_dataset(original_dataset, self.num_rows ** 2, shuffle=True).to(device)
-        sampled_xs = pl_module.sample(original_xs, forward = not is_backward, return_trajectory = False, clamp=True, ema_scope=True)
+        sampled_xs = pl_module.sample(original_xs, forward = not is_backward, return_trajectory = False, clamp=True, ema_scope=self.ema_scope)
 
         original_xs = (original_xs + 1) / 2
         sampled_xs = (sampled_xs + 1) / 2

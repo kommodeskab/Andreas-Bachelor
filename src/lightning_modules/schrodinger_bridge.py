@@ -166,7 +166,7 @@ class StandardDSB(BaseLightningModule):
 
         if dsb_iteration > self.hparams.max_dsb_iterations:
             print("Stopping training as max_dsb_iterations has been reached")
-            return True
+            raise KeyboardInterrupt
 
         if len(val_losses) > patience: 
             prior_losses = val_losses[:-patience]
@@ -310,8 +310,8 @@ class StandardDSB(BaseLightningModule):
     @torch.no_grad()
     def sample(self, x_start : Tensor, forward : bool = True, return_trajectory : bool = False, clamp : bool = False, ema_scope : bool = False) -> Tensor:
         """
-        Given the start point x_start, sample the final point xN / x0 by going forward / backward
-        Also, return the trajectory if return_trajectory is True
+        Given the start point x_start, sample the final point xN / x0 by going forward / backward.
+        Also, return the trajectory if return_trajectory is True.
         
         :param Tensor x_start: the start point
         :param bool forward: whether to go forward or backward
@@ -386,7 +386,7 @@ class StandardDSB(BaseLightningModule):
         # therefore, most batches will be 0 (meaning we need to use cache)
         # if the batch is not 0, and therefore a tensor, then we create a new cache
         if not isinstance(batch, int):
-            trajectory = self.sample(batch, forward = training_backward, return_trajectory = True, ema_scope=True)
+            trajectory = self.sample(batch, forward = training_backward, return_trajectory = True)
             self.cache.add(trajectory)
         else:
             trajectory = self.cache.sample()
@@ -427,7 +427,7 @@ class StandardDSB(BaseLightningModule):
         # step the optimizer and update the ema
         optimizer.step()
         ema.update()
-        self.log(self._get_loss_name(is_backward = training_backward, is_training = True), loss.item(), prog_bar=True)
+        self.log(self._get_loss_name(is_backward = training_backward, is_training = True), loss.item())
         
         # update scheduler
         if isinstance(lr_scheduler, (CosineAnnealingWarmRestarts, ConstantLR)):
@@ -437,7 +437,7 @@ class StandardDSB(BaseLightningModule):
         self.eval()
         
         if self.hparams.training_backward and dataloader_idx == 0:
-            trajectory = self.sample(batch, forward = True, return_trajectory = True, ema_scope=True)
+            trajectory = self.sample(batch, forward = True, return_trajectory = True)
             batch_size = trajectory.size(1)
             x0 = trajectory[0]
 
@@ -447,7 +447,7 @@ class StandardDSB(BaseLightningModule):
                 self.log(self._get_loss_name(is_backward = True, is_training = False), loss.item(), prog_bar=True, add_dataloader_idx=False)
 
         elif not self.hparams.training_backward and dataloader_idx == 1:
-            trajectory = self.sample(batch, forward = False, return_trajectory = True, ema_scope=True)
+            trajectory = self.sample(batch, forward = False, return_trajectory = True)
             batch_size = trajectory.size(1)
             xN = trajectory[-1]
 

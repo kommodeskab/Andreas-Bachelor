@@ -1,0 +1,49 @@
+# @package _global_
+defaults:
+  - override /trainer: gpu
+  - override /logger: default
+  - override /callbacks: none
+  - override /model: diffusion_model
+  - override /data: afhq
+
+project_name: 'diffusion'
+task_name: 'test'
+
+trainer:
+  val_check_interval: 0.5
+  log_every_n_steps: 40
+  max_epochs: 10
+  limit_val_batches: 5
+
+data:
+  _target_: src.data_modules.BaseDM
+  dataset:
+    _target_: src.dataset.AFHQ
+    split: 'dog'
+    img_size: 32
+  val_dataset:
+    _target_: src.dataset.AFHQ
+    split: 'cat'
+    img_size: 32
+  batch_size: 64
+  num_workers: 4
+
+model:
+  _target_: src.lightning_modules.DDPM
+  num_train_timesteps: 1000
+  optimizer:
+    _target_: torch.optim.Adam
+    _partial_: True
+    lr: 1e-5
+
+  model:
+    _target_: src.networks.unets.UNet2D
+    dropout: 0.1
+    sample_size: [32, 32]
+    in_channels: 3
+    out_channels: 3
+    layers_per_block: 2
+    block_out_channels: [128, 256, 512]
+    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
+    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+

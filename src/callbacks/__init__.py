@@ -8,6 +8,3 @@ from src.callbacks.image_callbacks import (
     SanityCheckImagesCB,
 )
 from src.callbacks.twod_callbacks import Plot2dCB, GaussianTestCB
-import wandb
-
-wandb.define_metric("Iteration")

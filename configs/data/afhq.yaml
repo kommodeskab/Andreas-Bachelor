@@ -1,0 +1,11 @@
+_target_: src.data_modules.BaseDM
+dataset:
+  _target_: src.dataset.AFHQ
+  split: 'dog'
+  img_size: 32
+val_dataset:
+  _target_: src.dataset.AFHQ
+  split: 'cat'
+  img_size: 32
+batch_size: 64
+num_workers: 4

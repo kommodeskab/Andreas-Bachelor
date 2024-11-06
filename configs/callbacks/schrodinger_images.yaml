@@ -5,4 +5,5 @@ defaults:
   - richmodelsummary
   - plotimages
   - image_grid
+  - image_grid_no_ema
   - image_marginal
