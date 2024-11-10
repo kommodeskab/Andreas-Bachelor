@@ -1,0 +1,5 @@
+defaults:
+  - diffusion_images
+  - learningratemonitor
+  - richprogressbar
+  - richmodelsummary

@@ -4,7 +4,7 @@ from src.callbacks.image_callbacks import (
     MarginalDistributionsImagesCB, 
     PlotImagesCB, 
     CalculateFID, 
-    TestInitialDiffusionCB, 
     SanityCheckImagesCB,
 )
 from src.callbacks.twod_callbacks import Plot2dCB, GaussianTestCB
+from src.callbacks.diffusion import DiffusionCallback

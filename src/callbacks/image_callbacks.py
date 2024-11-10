@@ -92,39 +92,40 @@ class SanityCheckImagesCB(pl.Callback):
         self.x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, 5).to(pl_module.device)
 
     def on_validation_end(self, trainer: pl.Trainer, pl_module: Union[FRDSB, TRDSB] ) -> None:
+        """
+        Checks if the model can reverse the process
+        """
         pl_module.eval()
         iteration = pl_module.hparams.DSB_iteration
-
-        traj_len = pl_module.hparams.num_steps + 1
-        traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
-
-        fig, axs = plt.subplots(10, 4, figsize=(20, 40))
-
-        training_backward = pl_module.hparams.training_backward
-        original = self.x0 if training_backward else self.xN
-        trajectory = pl_module.sample(original, forward=training_backward, return_trajectory=True, clamp=True, ema_scope=False)
-
-        traj_idx = traj_idx[1:] if training_backward else traj_idx[:-1]
-        trajectory = trajectory[traj_idx]
-        cmap = "gray" if trajectory.size(2) == 1 else None
-
-        for i, idx in enumerate(traj_idx):
-            ks = pl_module.k_to_tensor(idx, 5)
-            pred = pl_module.pred_x0(trajectory[i], ks) if training_backward else pl_module.pred_xN(trajectory[i], ks)
-            pred = pred.clamp(-1, 1).permute(0, 2, 3, 1).cpu().numpy()
-            pred = (pred + 1) / 2
-            trajectory_copy = trajectory[i].permute(0, 2, 3, 1).cpu().numpy()
-
-            for j in range(4):
-                axs[2 * j, i].imshow(trajectory_copy[j], cmap=cmap)
-                axs[2 * j + 1, i].imshow(pred[j], cmap=cmap)
-
+        is_backward = pl_module.hparams.training_backward
+        title = "Backward" if is_backward else "Forward"
+        
+        data = self.x0 if is_backward else self.xN
+        prior = pl_module.sample(data, forward = is_backward, return_trajectory=False, clamp=True, ema_scope=True)
+        reconstruction = pl_module.sample(prior, forward = not is_backward, return_trajectory=False, clamp=True, ema_scope=True)
+        
+        data = (data + 1) / 2
+        prior = (prior + 1) / 2
+        reconstruction = (reconstruction + 1) / 2
+        
+        data = data.permute(0, 2, 3, 1).cpu().detach().numpy()
+        prior = prior.permute(0, 2, 3, 1).cpu().detach().numpy()
+        reconstruction = reconstruction.permute(0, 2, 3, 1).cpu().detach().numpy()
+        
+        fig, axs = plt.subplots(3, 5, figsize=(20, 12))
+        for i in range(5):
+            axs[0, i].imshow(data[i])
+            axs[1, i].imshow(prior[i])
+            axs[2, i].imshow(reconstruction[i])
+            
+        axs[0, 0].set_title("Data")
+        axs[1, 0].set_title("Prior")
+        axs[2, 0].set_title("Reconstruction")
+        
         for ax in axs.flat:
             ax.axis("off")
-
-        plt.tight_layout()
-        title = "Backward" if training_backward else "Forward"
-        pl_module.logger.log_image(f"iteration_{iteration}/{title} sanity check", [wandb.Image(fig)], step=trainer.global_step)
+            
+        pl_module.logger.log_image(f"iteration_{iteration}/Sanity check {title}", [wandb.Image(fig)], step=trainer.global_step)
         plt.close("all")
     
 class PlotImagesCB(pl.Callback):
@@ -175,44 +176,11 @@ class PlotImagesCB(pl.Callback):
         video = (video * 255).numpy().astype("uint8")
         pl_module.logger.log_video(f"iteration_{iteration}/{title} video", [video], step=trainer.global_step, fps=[video_fps])
 
-class TestInitialDiffusionCB(pl.Callback):
-    def __init__(self, num_rows : int = 5, ema_scope : bool = True):
-        super().__init__()
-        self.num_rows = num_rows
-        self.ema_scope = ema_scope
-    
-    def on_validation_epoch_end(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
-        hparams = pl_module.hparams
-        if hparams.DSB_iteration == 1 and hparams.training_backward:
-            pl_module.eval()
-            device = pl_module.device
-
-            # we need to find out the shape of the images
-            # we will only use the images for finding the shape
-            images = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_rows ** 2, shuffle=True)
-            noise = torch.randn_like(images).to(device)
-            x0_pred = pl_module.sample(noise, forward = False, clamp=True, ema_scope=self.ema_scope)
-            x0_pred = (x0_pred + 1) / 2
-
-            fig, axs = plt.subplots(self.num_rows, self.num_rows, figsize=(20, 20))
-            cmap = "gray" if x0_pred.size(1) == 1 else None
-            for i in range(self.num_rows ** 2):
-                row, col = divmod(i, self.num_rows)
-                axs[row, col].imshow(x0_pred[i, :, :, :].permute(1, 2, 0).cpu().numpy(), cmap = cmap)
-
-            for ax in axs.flat:
-                ax.axis("off")
-
-            pl_module.logger.log_image("Initial diffusion", [wandb.Image(fig)], step=trainer.global_step)
-            plt.close("all")
-
-
 class CalculateFID(pl.Callback):
     def __init__(self, num_samples : int = 1000, ema_scope : bool = True):
         super().__init__()
         self.num_samples = num_samples
         self.ema_scope = ema_scope
-        wandb.define_metric("benchmarks/FID", step_metric="Iteration", summary="min")
 
     def save_images_in_folder(self, images : torch.Tensor, folder : str):
         os.makedirs(folder, exist_ok=True)
@@ -226,6 +194,8 @@ class CalculateFID(pl.Callback):
                 plt.imsave(f"{folder}/{i}.png", img)
         
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
+        wandb.define_metric("benchmarks/FID", step_metric="Iteration", summary="min")
+
         x0_dataset = trainer.datamodule.start_dataset
         xN_dataset = trainer.datamodule.end_dataset_val
         self.x0 = get_batch_from_dataset(x0_dataset, self.num_samples).to(pl_module.device)

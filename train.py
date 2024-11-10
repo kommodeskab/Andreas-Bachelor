@@ -29,8 +29,6 @@ def my_app(cfg : DictConfig) -> None:
     print("Instantiating model and datamodule..")
     datamodule : LightningDataModule = hydra.utils.instantiate(cfg.data)
     model : LightningModule = hydra.utils.instantiate(cfg.model)
-    # num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    # logger.experiment.config["num_params"] = num_params
 
     print("Compiling model..")
     if cfg.compile:

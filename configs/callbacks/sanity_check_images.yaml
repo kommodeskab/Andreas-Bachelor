@@ -1,0 +1,2 @@
+sanity_check:
+  _target_: src.callbacks.SanityCheckImagesCB

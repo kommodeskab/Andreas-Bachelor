@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 df = pd.read_csv('figures/fid.csv')
 fid = df["good results - benchmarks/FID"]
 # plot the data on a log scale
-plt.plot(fid, linestyle='-.')
+plt.plot(fid)
 plt.xticks(range(0, 20, 2))
 plt.xlabel('DSB iteration')
 plt.ylabel('FID')

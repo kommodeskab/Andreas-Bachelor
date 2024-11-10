@@ -20,33 +20,33 @@ data:
   num_workers: 4
 
 model:
-  _target_: src.lightning_modules.TRDSB
+  _target_: src.lightning_modules.PretrainedTRDSB
   max_gamma: 1.0
   min_gamma: 0.01
-  num_steps: 50
+  num_steps: 100
   T: 1.0
   lr_multiplier: 0.9
   min_init_lr: 1.e-6
   cache_max_size: 50
   cache_num_iters: 10
-  max_iterations: [40000, 30000, 20000]
+  max_iterations: [20000]
   patience: 6
-  initial_forward_sampling: "ornstein_0"
   max_norm: 1.0
+  ddpm_model: 'cat_32'
 
   forward_model:
     sample_size: [32, 32]
     time_embedding_type: 'positional'
     block_out_channels: [128, 192, 256]
     down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D","AttnUpBlock2D", "UpBlock2D"]
+    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
 
   backward_model:
     sample_size: [32, 32]
     time_embedding_type: 'positional'
     block_out_channels: [128, 192, 256]
     down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D","AttnUpBlock2D", "UpBlock2D"]
+    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
 
   optimizer:
     lr: 5.e-5

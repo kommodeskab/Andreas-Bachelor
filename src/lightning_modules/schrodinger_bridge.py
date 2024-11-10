@@ -32,6 +32,12 @@ class Cache:
         """
         randint = random.randint(0, len(self.cache) - 1)
         return self.cache[randint]
+    
+    def clear(self) -> None:
+        """
+        Clears the cache
+        """
+        self.cache = []
         
     def __len__(self) -> int:
         return len(self.cache)
@@ -102,15 +108,17 @@ class StandardDSB(BaseLightningModule):
                 
         self.forward_model : torch.nn.Module = forward_model
         self.backward_model : torch.nn.Module = backward_model
-        self.init_weights()
+        self.init_weights(self.forward_model)
+        self.init_weights(self.backward_model)
         
         self.partial_optimizer = optimizer
         self.partial_scheduler = scheduler
         
         self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()  
         self.cache = Cache(max_size = self.hparams.cache_max_size)
-        
-    def init_weights(self):
+    
+    @staticmethod
+    def init_weights(model : nn.Module) -> None:
         """
         Initializes the weights of the forward and backward models  
         using the Kaiming Normal initialization
@@ -130,8 +138,7 @@ class StandardDSB(BaseLightningModule):
                     init.constant_(m.bias, 0)
 
         # Apply initialization to both networks
-        self.forward_model.apply(initialize)
-        self.backward_model.apply(initialize)  
+        model.apply(initialize)
 
     def on_fit_start(self) -> None:
         # make the ema for the forward and backward models
@@ -200,7 +207,7 @@ class StandardDSB(BaseLightningModule):
             self.hparams.val_losses = []
             self.hparams.training_backward = not self.hparams.training_backward
             self.trainer.datamodule.hparams.training_backward = self.hparams.training_backward
-            self.cache.cache = []
+            self.cache.clear()
 
             if self.hparams.training_backward: 
                 self.hparams.DSB_iteration += 1
@@ -376,9 +383,6 @@ class StandardDSB(BaseLightningModule):
         return f"iteration_{iteration}/{direction}_loss/{training}"
     
     def training_step(self, batch : Tensor, batch_idx : int) -> Tensor:
-        # if training_backward      -> batch = x0
-        # if not training_backward  -> batch = xN
-
         self.hparams.curr_num_iters += 1
         training_backward = self.hparams.training_backward
         
@@ -386,7 +390,7 @@ class StandardDSB(BaseLightningModule):
         # therefore, most batches will be 0 (meaning we need to use cache)
         # if the batch is not 0, and therefore a tensor, then we create a new cache
         if not isinstance(batch, int):
-            trajectory = self.sample(batch, forward = training_backward, return_trajectory = True)
+            trajectory = self.sample(batch, forward = training_backward, return_trajectory = True, ema_scope=True)
             self.cache.add(trajectory)
         else:
             trajectory = self.cache.sample()
@@ -437,7 +441,7 @@ class StandardDSB(BaseLightningModule):
         self.eval()
         
         if self.hparams.training_backward and dataloader_idx == 0:
-            trajectory = self.sample(batch, forward = True, return_trajectory = True)
+            trajectory = self.sample(batch, forward = True, return_trajectory = True, ema_scope=True)
             batch_size = trajectory.size(1)
             x0 = trajectory[0]
 
@@ -447,7 +451,7 @@ class StandardDSB(BaseLightningModule):
                 self.log(self._get_loss_name(is_backward = True, is_training = False), loss.item(), prog_bar=True, add_dataloader_idx=False)
 
         elif not self.hparams.training_backward and dataloader_idx == 1:
-            trajectory = self.sample(batch, forward = False, return_trajectory = True)
+            trajectory = self.sample(batch, forward = False, return_trajectory = True, ema_scope=True)
             batch_size = trajectory.size(1)
             xN = trajectory[-1]
 
