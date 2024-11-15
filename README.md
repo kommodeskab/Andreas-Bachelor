@@ -1,5 +1,5 @@
 ### How to run an experiment
-To run an experiment, launch it from the console. For example, to run the ```fr_schrodinger.yaml``` experiment (found in configs/experiment), simply write:
+To run an experiment, launch it from the console. For example, to run the ```mnist_to_emnist.yaml``` experiment (found in configs/experiment), simply write:
 ```
 python train.py +experiment=mnist_to_emnist trainer.max_epochs=10
 ```
