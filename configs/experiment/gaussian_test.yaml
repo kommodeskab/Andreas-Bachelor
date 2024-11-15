@@ -6,7 +6,7 @@ defaults:
   - override /model: twod
   - override /logger: default
 
-dim: 64
+dim: 256
 n_cond: 101
 
 project_name: 'Gaussian test'
@@ -16,7 +16,7 @@ trainer:
   val_check_interval: 200
   log_every_n_steps: 20
   limit_val_batches: 5
-  max_epochs: 200
+  max_epochs: -1
 
 data:
   start_dataset:
@@ -30,14 +30,14 @@ model:
     n_cond: 101
     dim_in: ${dim}
     dim_out: ${dim}
-    dim_hidden: 128
+    dim_hidden: 512
     num_layers: 3
 
   backward_model:
     n_cond: 101
     dim_in: ${dim}
     dim_out: ${dim}
-    dim_hidden: 128
+    dim_hidden: 512
     num_layers: 3
 
   max_gamma: 1.0
@@ -47,7 +47,8 @@ model:
   cache_num_iters: 100
   cache_max_size: 10
   lr_multiplier: 1.0
-  max_iterations: 4000
+  max_iterations: 10000
+  patience: 6
   max_norm: 1.0
   initial_forward_sampling: "ornstein_1"
 

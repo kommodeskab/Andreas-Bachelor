@@ -1,16 +1,16 @@
 import torch
-from typing import Tuple, Any, Callable, Literal, List
+from typing import Tuple, Callable, List
 from torch import Tensor
 from src.lightning_modules.baselightningmodule import BaseLightningModule
+from src.lightning_modules.utils import ckpt_path_from_id
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import LRScheduler
 from torch.optim.lr_scheduler import CosineAnnealingWarmRestarts, ReduceLROnPlateau, ConstantLR
 from torch.nn import Module
-import torch.nn.init as init
-import torch.nn as nn
 from torch_ema import ExponentialMovingAverage
 from pytorch_lightning.utilities import grad_norm
 import random
+import copy
 
 class Cache:
     def __init__(self, max_size : int):
@@ -38,6 +38,12 @@ class Cache:
         Clears the cache
         """
         self.cache = []
+    
+    def is_full(self) -> bool:
+        """
+        Returns whether the cache is full
+        """
+        return len(self) == self.max_size
         
     def __len__(self) -> int:
         return len(self.cache)
@@ -46,7 +52,6 @@ class StandardDSB(BaseLightningModule):
     def __init__(
         self,
         forward_model : torch.nn.Module,
-        backward_model : torch.nn.Module,
         optimizer : Optimizer,
         scheduler : LRScheduler,
         max_gamma : float,
@@ -54,6 +59,7 @@ class StandardDSB(BaseLightningModule):
         num_steps : int,
         cache_max_size : int,
         cache_num_iters : int,
+        backward_model : torch.nn.Module | None = None,
         T : int | None = None,
         lr_multiplier : float = 1.0,
         min_init_lr : float = 0.0,
@@ -63,6 +69,9 @@ class StandardDSB(BaseLightningModule):
         max_dsb_iterations : int | None = 20,
         max_norm : float = float("inf"),
         initial_forward_sampling: str | None = None,
+        forward_model_id : str | None = None,
+        backward_model_id : str | None = None,
+        **kwargs
     ):
         """
         Initializes the StandardDSB model
@@ -105,11 +114,33 @@ class StandardDSB(BaseLightningModule):
 
         self.gammas = gammas
         self.gammas_bar = torch.cumsum(self.gammas, 0)
-                
+        
+        # if the backward model is not provided, make it a copy of the forward model 
         self.forward_model : torch.nn.Module = forward_model
-        self.backward_model : torch.nn.Module = backward_model
-        self.init_weights(self.forward_model)
-        self.init_weights(self.backward_model)
+        self.backward_model : torch.nn.Module = copy.deepcopy(forward_model) if backward_model is None else backward_model
+        
+        def state_dict_from_ckpt_path(ckpt_path : str) -> dict:
+            # all the keys in the state dict have the prefix "model."
+            # therefore, we need to remove the prefix
+            state_dict = torch.load(ckpt_path, weights_only=True)['state_dict']
+            new_state_dict = {k.removeprefix("model."): v for k, v in state_dict.items()}
+            return new_state_dict
+        
+        if forward_model_id is not None:
+            forward_ckpt_path = ckpt_path_from_id(forward_model_id)
+            forward_state_dict = state_dict_from_ckpt_path(forward_ckpt_path)
+            self.forward_model.load_state_dict(forward_state_dict)
+            print(f"Successfully loaded forward model from {forward_ckpt_path}")
+        else:
+            self.init_weights(self.forward_model)
+        
+        if backward_model_id is not None:
+            backward_ckpt_path = ckpt_path_from_id(backward_model_id)
+            backward_state_dict = state_dict_from_ckpt_path(backward_ckpt_path)
+            self.backward_model.load_state_dict(backward_state_dict)
+            print(f"Successfully loaded backward model from {backward_ckpt_path}")
+        else:
+            self.init_weights(self.backward_model)
         
         self.partial_optimizer = optimizer
         self.partial_scheduler = scheduler
@@ -117,28 +148,6 @@ class StandardDSB(BaseLightningModule):
         self.mse : Callable[[Tensor, Tensor], Tensor] = torch.nn.MSELoss()  
         self.cache = Cache(max_size = self.hparams.cache_max_size)
     
-    @staticmethod
-    def init_weights(model : nn.Module) -> None:
-        """
-        Initializes the weights of the forward and backward models  
-        using the Kaiming Normal initialization
-        """
-        @torch.no_grad()
-        def initialize(m):
-            if isinstance(m, nn.Conv2d):
-                init.kaiming_normal_(m.weight, mode='fan_out')
-                if m.bias is not None:
-                    init.constant_(m.bias, 0)
-            elif isinstance(m, nn.BatchNorm2d):
-                init.constant_(m.weight, 1)
-                init.constant_(m.bias, 0)
-            elif isinstance(m, nn.Linear):
-                init.kaiming_normal_(m.weight, mode='fan_out')
-                if m.bias is not None:
-                    init.constant_(m.bias, 0)
-
-        # Apply initialization to both networks
-        model.apply(initialize)
 
     def on_fit_start(self) -> None:
         # make the ema for the forward and backward models
@@ -383,59 +392,65 @@ class StandardDSB(BaseLightningModule):
         return f"iteration_{iteration}/{direction}_loss/{training}"
     
     def training_step(self, batch : Tensor, batch_idx : int) -> Tensor:
-        self.hparams.curr_num_iters += 1
         training_backward = self.hparams.training_backward
         
-        # using custom "cachedataloader" to deliver batches
-        # therefore, most batches will be 0 (meaning we need to use cache)
-        # if the batch is not 0, and therefore a tensor, then we create a new cache
-        if not isinstance(batch, int):
-            trajectory = self.sample(batch, forward = training_backward, return_trajectory = True, ema_scope=True)
-            self.cache.add(trajectory)
-        else:
-            trajectory = self.cache.sample()
+        trajectory = self.sample(batch, forward = training_backward, return_trajectory = True, ema_scope=True)
+        self.cache.add(trajectory)
         
-        x0, xN = trajectory[0], trajectory[-1]
-        batch_size = trajectory.size(1)
+        cache_is_full = self.cache.is_full()
         
-        ks = torch.randint(0, self.hparams.num_steps, (batch_size,)).to(self.device)
-        if training_backward:
-            ks += 1
-        all_samples = torch.arange(batch_size).to(self.device)
-        sampled_batch = trajectory[ks, all_samples].to(self.device)
+        num_cache_iters = self.hparams.cache_num_iters if cache_is_full else 1
+        for _ in range(num_cache_iters):
+            self.hparams.curr_num_iters += 1
+            
+            if cache_is_full:
+                trajectory = self.cache.sample()
 
-        # -- OPTIMIZATION --
-        # get model, optimizer and ema
-        model, optimizer, ema, lr_scheduler = self._get_training_components(training_backward)
-        model.train()
+            x0, xN = trajectory[0], trajectory[-1]
+            batch_size = trajectory.size(1)
+            
+            ks = torch.randint(0, self.hparams.num_steps, (batch_size,)).to(self.device)
+            if training_backward:
+                ks += 1
+            all_samples = torch.arange(batch_size).to(self.device)
+            sampled_batch = trajectory[ks, all_samples].to(self.device)
 
-        # calculate loss and do backward pass
-        optimizer.zero_grad()
-        # if training backward, then sampled_batch = xk + 1 else sampled_batch = xk
-        loss = self._backward_loss(sampled_batch, ks, x0) if training_backward else self._forward_loss(sampled_batch, ks, xN)
-        self.manual_backward(loss)
-        
-        # raise exception if loss is nan
-        if torch.isnan(loss).any():
-            raise ValueError(f"Loss is nan: {loss.item() = }")
-        
-        if loss.item() > 1e6:
-            raise ValueError(f"Loss is too high: {loss.item() = }")
+            # -- OPTIMIZATION --
+            # get model, optimizer and ema
+            model, optimizer, ema, lr_scheduler = self._get_training_components(training_backward)
+            model.train()
 
-        # clip gradients and log gradients
-        model_name = "backward_model" if training_backward else "forward_model"
-        norm = grad_norm(model, norm_type=2).get('grad_2.0_norm_total', 0)
-        self.log(f"{model_name}_grad_norm_before_clip", norm)
-        self.clip_gradients(optimizer, self.hparams.max_norm, "norm")
+            # calculate loss and do backward pass
+            optimizer.zero_grad()
+            # if training backward, then sampled_batch = xk + 1 else sampled_batch = xk
+            loss = self._backward_loss(sampled_batch, ks, x0) if training_backward else self._forward_loss(sampled_batch, ks, xN)
+            self.manual_backward(loss)
+            
+            # raise exception if loss is nan
+            if torch.isnan(loss).any():
+                raise ValueError(f"Loss is nan: {loss.item() = }")
+            
+            if loss.item() > 1.e6:
+                raise ValueError(f"Loss is too high: {loss.item() = }")
 
-        # step the optimizer and update the ema
-        optimizer.step()
-        ema.update()
-        self.log(self._get_loss_name(is_backward = training_backward, is_training = True), loss.item())
-        
-        # update scheduler
-        if isinstance(lr_scheduler, (CosineAnnealingWarmRestarts, ConstantLR)):
-            lr_scheduler.step(self.hparams.curr_num_iters)
+            # clip the gradients. first, save the norm for later logging
+            norm = grad_norm(model, norm_type=2).get('grad_2.0_norm_total', 0)
+            self.clip_gradients(optimizer, self.hparams.max_norm, "norm")
+
+            # step the optimizer and update the ema
+            optimizer.step()
+            ema.update()
+            
+            model_name = "backward_model" if training_backward else "forward_model"
+            self.logger.log_metrics({
+                f"{model_name}_grad_norm_before_clip": norm,
+                self._get_loss_name(is_backward = training_backward, is_training = True): loss.item(),
+                "Training iteration": self.hparams.curr_num_iters
+            }, step = self.hparams.curr_num_iters)
+            
+            # update scheduler
+            if isinstance(lr_scheduler, (CosineAnnealingWarmRestarts, ConstantLR)):
+                lr_scheduler.step(self.hparams.curr_num_iters)
 
     def validation_step(self, batch : Tensor, batch_idx : int, dataloader_idx : int) -> Tensor:
         self.eval()

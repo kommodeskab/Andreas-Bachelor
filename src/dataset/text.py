@@ -7,6 +7,10 @@ import torch
 
 class TextDataset(BaseDataset):
     def __init__(self, text : str, size : int = 1000):
+        """
+        Given some text (str) generate points that falls on the text with some noise.
+        I.e. if enough points are generated, the points will form the text.
+        """
         super().__init__()
         self.text = text
         self.size = size

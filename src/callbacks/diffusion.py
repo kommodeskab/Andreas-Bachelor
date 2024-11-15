@@ -8,6 +8,9 @@ from src.callbacks.plot_functions import get_image_fig, get_grid_fig
 
 class DiffusionCallback(Callback):
     def __init__(self):
+        """
+        Callback to sample from the DDPM model and log the trajectory and samples.
+        """
         super().__init__()
         
     def on_train_start(self, trainer, pl_module):
@@ -19,6 +22,7 @@ class DiffusionCallback(Callback):
         noise = torch.randn(16, *self.sample_shape).to(pl_module.device)
         trajectory = pl_module.sample(noise, return_trajectory=True, clamp=True).cpu()
         trajectory = (trajectory + 1) / 2
+        # I have reused the 
         fig_1 = get_image_fig(trajectory)
         
         left_images = noise.permute(0, 2, 3, 1).cpu()

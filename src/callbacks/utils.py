@@ -33,7 +33,6 @@ def MMD(x : Tensor, y : Tensor, kernel : str) -> Tensor:
                   torch.zeros(xx.shape).to(device))
 
     if kernel == "multiscale":
-
         bandwidth_range = [0.2, 0.5, 0.9, 1.3]
         for a in bandwidth_range:
             XX += a**2 * (a**2 + dxx)**-1
@@ -41,7 +40,6 @@ def MMD(x : Tensor, y : Tensor, kernel : str) -> Tensor:
             XY += a**2 * (a**2 + dxy)**-1
 
     if kernel == "rbf":
-
         bandwidth_range = [10, 15, 20, 50]
         for a in bandwidth_range:
             XX += torch.exp(-0.5*dxx/a)

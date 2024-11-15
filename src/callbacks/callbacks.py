@@ -11,6 +11,10 @@ matplotlib.use('Agg')
 
 class PlotGammaScheduleCB(pl.Callback):
     def __init__(self):
+        """
+        Callback to plot the gamma schedule.
+        Plots the gamma schedule, gamma bar schedule, sigma backward schedule and sigma forward schedule.
+        """
         super().__init__()
     
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
@@ -37,11 +41,16 @@ class PlotGammaScheduleCB(pl.Callback):
 
 class MMDCB(pl.Callback):
     def __init__(self, num_samples : int = 1000):
+        """
+        Callback to calculate the MMD between the initial and final distributions.
+        Also calculates the "baseline" MMD between two halves of the initial distribution.
+        """
         super().__init__()
         self.num_samples = num_samples
-        wandb.define_metric("benchmarks/MMD", step_metric="Iteration", summary="min")
 
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
+        wandb.define_metric("benchmarks/MMD", step_metric="Iteration", summary="min")
+        
         self.xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, self.num_samples).to(pl_module.device)
         self.x0 = get_batch_from_dataset(trainer.datamodule.start_dataset_val, self.num_samples).to(pl_module.device)
         

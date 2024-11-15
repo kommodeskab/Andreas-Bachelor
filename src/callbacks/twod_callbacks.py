@@ -13,6 +13,11 @@ class Plot2dCB(pl.Callback):
         num_points : int = 1000,
         num_trajectories : int = 5,
         ):
+        """
+        Callback for plotting 2D trajectories.
+        Both shows the initial forward trajectory and the following forward and backward trajectories.
+        Colors the points to better show the direction of the trajectory.
+        """
         super().__init__()
         self.num_points = num_points
         self.num_trajectories = num_trajectories
@@ -41,9 +46,12 @@ class Plot2dCB(pl.Callback):
         
 class GaussianTestCB(pl.Callback):
     def __init__(self, num_samples : int = 1000):
+        """
+        Callback for calculating the KL divergence between the predicted and the real distribution.
+        Also calculates a "baseline" KL divergence between the initial and the real distribution.
+        """
         super().__init__()
         self.num_samples = num_samples
-        wandb.define_metric("benchmarks/KL-divergence", step_metric="Iteration", summary="min")
     
     def on_train_start(self, trainer: pl.Trainer, pl_module: StandardDSB) -> None:
         self.xN = get_batch_from_dataset(trainer.datamodule.end_dataset_val, self.num_samples).to(pl_module.device)

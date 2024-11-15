@@ -6,6 +6,9 @@ import matplotlib
 matplotlib.use('Agg')
 
 def get_gamma_fig(gammas, ylabel):
+    """
+    Plot the gamma values as a simple line plot.
+    """
     ts = range(1, len(gammas)+1)
     fig, ax = plt.subplots(figsize=(10, 5))
     ax.plot(ts, gammas)
@@ -14,10 +17,15 @@ def get_gamma_fig(gammas, ylabel):
     return fig
 
 def get_image_fig(trajectory : torch.Tensor):
+    """
+    Plot the trajectory as a 5x5 grid of images.
+    The x-axis is the batch index, and the y-axis is the time index.
+    """
     traj_len = trajectory.shape[0]
     traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
     cmap = "gray" if trajectory.size(2) == 1 else None
 
+    # Plot the trajectory as a 5x5 grid of images
     fig, ax = plt.subplots(5, 5, figsize=(20, 20))
     for i in range(5): 
         for j in range(5): 
@@ -32,6 +40,10 @@ def get_image_fig(trajectory : torch.Tensor):
     return fig
 
 def get_traj_fig(trajectory : torch.Tensor, num_points : int):
+    """
+    Plot the trajectory of 2d points.
+    Makes 5 panes with the trajectory at the start, 1/4, 1/2, 3/4, and the end.
+    """
     random_points = random.sample(range(num_points), 5)
     traj_len = trajectory.shape[0]
     traj_idx = [0, traj_len//4, traj_len//2, 3*traj_len//4, traj_len-1]
@@ -63,6 +75,9 @@ def get_traj_fig(trajectory : torch.Tensor, num_points : int):
     return fig
 
 def get_grid_fig(left_images : torch.Tensor, right_images : torch.Tensor, num_rows : int) -> plt.Figure:
+    """
+    Makes two grids, one with the left images and one with the right images.
+    """
     fig, axs = plt.subplots(num_rows, 2 * num_rows + 1, figsize=(20, 10))
     cmap = "gray" if left_images[0].shape[2] == 1 else None
 

@@ -5,6 +5,10 @@ import torchvision
 
 class CelebA:
     def __init__(self, attr : int, on_or_off : bool):
+        """
+        A special version of the CelebA dataset that only returns images with a specific attribute
+        Can be used to create a dataset with only smiling faces, for example.
+        """
         super().__init__()
             
         self.celeba = torchvision.datasets.CelebA(

@@ -1,5 +1,5 @@
 from .baselightningmodule import BaseLightningModule
-from diffusers import DDPMScheduler, DDPMPipeline
+from diffusers import DDPMScheduler
 import torch
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import ReduceLROnPlateau
@@ -16,6 +16,10 @@ class DDPM(BaseLightningModule):
         lr_patience : int = 20,
         inference_steps : int | None = None,
     ):
+        """
+        A PyTorch Lightning module for training a Diffusion Probabilistic Model (DDPM).
+        The model is trained using a DDPMScheduler, which adds noise to the input data.
+        """
         super().__init__()
         self.save_hyperparameters(ignore=["model", "optimizer"])
         self.model = model

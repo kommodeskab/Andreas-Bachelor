@@ -19,6 +19,10 @@ class ImageDataset(BaseDataset):
         augment : bool = False,
         size_multiplier : int = 1,
     ):
+        """
+        The base image dataset class.
+        Enables data augmentation and resizing for extended dataset size.
+        """
         super().__init__()
         self.dataset = dataset
         self.size_multiplier = size_multiplier

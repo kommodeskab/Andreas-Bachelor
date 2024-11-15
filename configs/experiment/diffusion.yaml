@@ -9,6 +9,9 @@ defaults:
 project_name: 'diffusion'
 task_name: 'test'
 
+size: 32
+animal: 'cat'
+
 callbacks:
   swa:
     _target_: pytorch_lightning.callbacks.StochasticWeightAveraging
@@ -16,13 +19,12 @@ callbacks:
   early_stopping:
     _target_: pytorch_lightning.callbacks.EarlyStopping
     monitor: 'val_loss'
-    patience: 30
+    patience: 50
     mode: 'min'
 
 trainer:
-  log_every_n_steps: 5
+  log_every_n_steps: 50
   max_epochs: -1
-  check_val_every_n_epoch: 10
   val_check_interval: 1.0
   gradient_clip_val: 1.0
 
@@ -30,36 +32,29 @@ data:
   _target_: src.data_modules.BaseDM
   dataset:
     _target_: src.dataset.AFHQDataset
-    split: 'cat'
-    img_size: 32
+    split: ${animal}
+    img_size: ${size}
     train: True
     augment: True
     size_multiplier: 5
   val_dataset:
     _target_: src.dataset.AFHQDataset
-    split: 'cat'
-    img_size: 32
+    split: ${animal}
+    img_size: ${size}
     train: False
   batch_size: 64
   num_workers: 4
 
 model:
   _target_: src.lightning_modules.DDPM
-  prediction_type: 'epsilon'
-  num_train_timesteps: 100
-  lr_patience: 10
+  prediction_type: 'sample'
+  num_train_timesteps: 1000
+  lr_patience: 20
   optimizer:
     _target_: torch.optim.AdamW
     _partial_: True
-    lr: 5e-5
+    lr: 5.e-5
 
   model:
-    _target_: src.networks.unets.UNet2D
-    dropout: 0.1
-    sample_size: [32, 32]
-    in_channels: 3
-    out_channels: 3
-    block_out_channels: [128, 192, 256]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
-
+    _target_: src.networks.unets.PretrainedUNet2D
+    model_id: 'krasnova/ddpm_afhq_64'

@@ -41,13 +41,6 @@ model:
     down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
     up_block_types: ["AttnUpBlock2D","AttnUpBlock2D", "UpBlock2D"]
 
-  backward_model:
-    sample_size: [32, 32]
-    time_embedding_type: 'positional'
-    block_out_channels: [128, 192, 256]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D","AttnUpBlock2D", "UpBlock2D"]
-
   optimizer:
     lr: 5.e-5
 

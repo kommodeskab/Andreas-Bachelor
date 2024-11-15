@@ -10,50 +10,41 @@ project_name: 'dog_to_cat'
 task_name: 'test'
 
 trainer:
-  val_check_interval: 1.0
-  log_every_n_steps: 50
+  val_check_interval: 20
+  log_every_n_steps: 1
   max_epochs: -1
-  limit_val_batches: 1
+  limit_val_batches: 5
 
 data:
   batch_size: 32
   num_workers: 4
 
 model:
-  _target_: src.lightning_modules.PretrainedTRDSB
+  _target_: src.lightning_modules.DDPMPPTRDSB
   max_gamma: 1.0
   min_gamma: 0.01
   num_steps: 100
-  T: 1.0
-  lr_multiplier: 0.9
-  min_init_lr: 1.e-6
+  T: 1.5
   cache_max_size: 50
-  cache_num_iters: 10
-  max_iterations: [20000]
-  patience: 6
+  cache_num_iters: 100
+  max_iterations: [30000]
   max_norm: 1.0
-  ddpm_model: 'cat_32'
+  forward_model_id: 'cat_32_sample_pretrained'
+  backward_model_id: 'dog_32_sample_pretrained'
 
   forward_model:
-    sample_size: [32, 32]
-    time_embedding_type: 'positional'
-    block_out_channels: [128, 192, 256]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+    _target_: src.networks.unets.PretrainedUNet2D
+    model_id: 'krasnova/ddpm_afhq_64'
 
   backward_model:
-    sample_size: [32, 32]
-    time_embedding_type: 'positional'
-    block_out_channels: [128, 192, 256]
-    down_block_types: ["DownBlock2D", "AttnDownBlock2D", "AttnDownBlock2D"]
-    up_block_types: ["AttnUpBlock2D", "AttnUpBlock2D", "UpBlock2D"]
+    _target_: src.networks.unets.PretrainedUNet2D
+    model_id: 'krasnova/ddpm_afhq_64'
 
   optimizer:
     lr: 5.e-5
 
   scheduler:
-    _target_: torch.optim.lr_scheduler.CosineAnnealingWarmRestarts
-    _partial_: True
-    T_0: 1000
-    T_mult: 1
-    eta_min: 1.e-6
+    _target_: torch.optim.lr_scheduler.ReduceLROnPlateau
+    mode: 'min'
+    factor: 0.5
+    patience: 3

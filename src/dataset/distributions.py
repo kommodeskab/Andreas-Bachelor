@@ -25,6 +25,9 @@ class StandardNormalDataset(NormalDataset):
     
 class Line2dDataset(Dataset):
     def __init__(self, size : int = 1000):
+        """
+        Makes points that falls on a vertical line in 2D space with some noise.
+        """
         super().__init__()
         self.size = size
 
@@ -41,6 +44,9 @@ class Line2dDataset(Dataset):
 
 class S2dDataset(Dataset):
     def __init__(self, size: int = 1000):
+        """
+        Makes points that falls on a curve in 2D space with some noise.
+        """
         super().__init__()
         self.size = size
 

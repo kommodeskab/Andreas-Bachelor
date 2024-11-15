@@ -13,6 +13,10 @@ class BaseDM(pl.LightningDataModule):
         batch_size : int = 10,
         num_workers: int = 4,
         ):
+        """
+        A base data module for datasets. 
+        It takes a dataset and splits into train and validation (if val_dataset is None).
+        """
         super().__init__()
         self.save_hyperparameters(ignore=["dataset", "val_dataset"])
         
@@ -54,6 +58,12 @@ class BaseDSBDM(pl.LightningDataModule):
         batch_size : int = 10,
         num_workers: int = 4,
         ):
+        """
+        A special datamodule for the DSB algorithm. 
+        It takes two datasets, one for the start and one for the end, and splits them into train and validation.
+        It returns end_dataset when training forward and start_dataset when training backward.
+        Also uses the special CacheDataLoader for the cache implementation in the DSB algorithm.
+        """
         super().__init__()
         self.save_hyperparameters(ignore=["start_dataset", "end_dataset", "start_dataset_val", "end_dataset_val"])
         
@@ -80,8 +90,7 @@ class BaseDSBDM(pl.LightningDataModule):
     def train_dataloader(self):
         training_backward = self.hparams.training_backward
         dataset = self.start_dataset_train if training_backward else self.end_dataset_train
-        return CacheDataLoader(
-            cache_num_iters = self.hparams.cache_num_iters, 
+        return DataLoader(
             dataset = dataset, 
             shuffle = True,
             **self.loader_kwargs
